@@ -30,3 +30,45 @@ Run the milestone verification checks:
 python scripts/verify_preprocessing.py
 python scripts/verify_lstm_baseline.py
 ```
+
+## MQTT Sensor Publisher
+
+Milestone 3 publishes the same validated FD001 training replay messages to MQTT.
+The publisher reuses `iot.local_replay` and `iot.sensor_message`, so published
+payloads contain only `unit_id`, `cycle`, and the 17 selected sensor features.
+It does not publish RUL targets, labels, future cycles, official test targets,
+or InfluxDB data.
+
+Install the MQTT client dependency before real broker publishing:
+
+```powershell
+python -m pip install paho-mqtt
+```
+
+Run a dry-run without Paho or a broker:
+
+```powershell
+python -m iot.mqtt_publisher --dry-run --limit 5
+```
+
+Publish a small replay to a local broker:
+
+```powershell
+python -m iot.mqtt_publisher --host localhost --port 1883 --topic industrial/sensors --qos 0 --limit 5
+```
+
+Configuration can also come from environment variables:
+
+```powershell
+$env:IOT_MQTT_HOST = "localhost"
+$env:IOT_MQTT_PORT = "1883"
+$env:IOT_MQTT_TOPIC = "industrial/sensors"
+$env:IOT_MQTT_QOS = "0"
+$env:IOT_REPLAY_LIMIT = "5"
+python -m iot.mqtt_publisher
+```
+
+Optional environment variables:
+
+- `IOT_TRAIN_PATH`: defaults to `data/train_FD001.txt`.
+- `IOT_REPLAY_LIMIT`: defaults to replaying the full training file.
