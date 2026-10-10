@@ -1,0 +1,33 @@
+{
+  "official_test_usage": "prepared for explicit final evaluation only; not used in training or model selection",
+  "output_dir": "artifacts/data/fd001_lstm_baseline",
+  "rul_path": "Data/RUL_FD001.txt",
+  "scaler": "StandardScaler",
+  "scaler_fit_scope": "raw rows from the 80 training engines only",
+  "seed": 42,
+  "selected_features": [
+    "setting_1",
+    "setting_2",
+    "sensor_2",
+    "sensor_3",
+    "sensor_4",
+    "sensor_6",
+    "sensor_7",
+    "sensor_8",
+    "sensor_9",
+    "sensor_11",
+    "sensor_12",
+    "sensor_13",
+    "sensor_14",
+    "sensor_15",
+    "sensor_17",
+    "sensor_20",
+    "sensor_21"
+  ],
+  "stride": 1,
+  "test_path": "Data/test_FD001.txt",
+  "train_engine_count": 80,
+  "train_path": "Data/train_FD001.txt",
+  "val_engine_count": 20,
+  "window_size": 30
+}

@@ -1,0 +1,19 @@
+{
+  "embedding_dimension": 64,
+  "embedding_source": "final hidden state from last LSTM layer",
+  "head_dropout": 0.2,
+  "hidden_size": 64,
+  "input_size": 17,
+  "lstm_dropout": 0.2,
+  "model": "LSTMBaseline",
+  "num_layers": 2,
+  "output_activation": null,
+  "parameter_count": 56641,
+  "regression_head": [
+    "Linear(64, 32)",
+    "ReLU",
+    "Dropout(0.2)",
+    "Linear(32, 1)"
+  ],
+  "sequence_length": 30
+}

@@ -1,0 +1,25 @@
+﻿__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.ipynb_checkpoints/
+.vscode/
+.idea/
+*.log
+*.pt
+*.pth
+*.ckpt
+
+# Unused C-MAPSS subsets for the current FD001 experiment
+data/train_FD002.txt
+data/train_FD003.txt
+data/train_FD004.txt
+data/test_FD002.txt
+data/test_FD003.txt
+data/test_FD004.txt
+data/RUL_FD002.txt
+data/RUL_FD003.txt
+data/RUL_FD004.txt

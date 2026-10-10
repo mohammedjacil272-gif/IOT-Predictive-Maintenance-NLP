@@ -1,0 +1,12 @@
+{
+  "best_epoch": 3,
+  "best_validation_rmse": 31.364907230543583,
+  "checkpoint_selection": "lowest validation RMSE",
+  "epochs_completed": 13,
+  "mae": 20.884394122374314,
+  "mse": 983.7574055806052,
+  "official_test_evaluation": "not performed",
+  "r2": 0.733277969832774,
+  "rmse": 31.364907230543583,
+  "training_duration_seconds": 60.6935928999992
+}

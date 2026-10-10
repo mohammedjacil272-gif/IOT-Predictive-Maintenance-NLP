@@ -1,0 +1,172 @@
+{
+  "artifact_hashes": {
+    "X_test": "c95823b3a2f7264d6c0d2f178d6eadd2f18a8186c18fb9c930ef58fde4fc3692",
+    "X_train": "024fc43c6124211f08fc61a710bbe13f3e1906c8f2bad16e24934c5ade5cda00",
+    "feature_report": "670102621ea07ed58e3fff8fb0e130d0ee4fc362411a6186128c74a8e094f8fc",
+    "preprocessing_config": "f2e9ac88f679bf79d3b15403e6866736fcfc7bdabfa54b1601173a1dcdc152bd",
+    "scaler": "01a4f60efc4fb3474af97f5c8a4ccdef55502d36adfc97b616b31e69aae4329f",
+    "test_window_metadata": "3a156fd6603383139385b1549f455cd05b0d1f66059278ac47cf0c747a4673b9",
+    "train_window_metadata": "8d3352b62ec9e191e9d75d4e3936c85f18c7eb110700d4429dd509291fc213ff",
+    "validation_report": "544840930e3530eb215872e104dfe64c1a1ceb312af9b677c4c0698e85bb4997",
+    "y_test": "9eeec6e05fdc23861b3d5f78ed22a9a6243dff3e2b312f462ea8c0faac98a452",
+    "y_train": "6ffb3d2bf37cdb2a4c2d28e2702fffd27e106ed7346262897ea63fea905f53e5"
+  },
+  "deterministic_inputs": {
+    "rul_sha256": "a19c8ec94931949d0485bdc35118206e9c81c4547b422efb9cf86f4ceddbceca",
+    "test_sha256": "3cda7109ce17bafb5443f2ac926cfcf88154b941b8c4cf95eb55d1ddd6f52851",
+    "train_sha256": "963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8"
+  },
+  "preprocessing_checks": {
+    "X_test_finite": true,
+    "X_test_shape": [
+      100,
+      30,
+      17
+    ],
+    "X_train_finite": true,
+    "X_train_shape": [
+      17731,
+      30,
+      17
+    ],
+    "every_window_has_30_consecutive_cycles": true,
+    "expected_test_shape": true,
+    "expected_y_test_shape": true,
+    "no_windows_cross_engine_boundaries": true,
+    "rul_engine_alignment": true,
+    "scaler_fitted_only_on_training_rows": true,
+    "selected_feature_count": 17,
+    "selected_feature_count_is_17": true,
+    "test_labels_equal_rul_file": true,
+    "test_lengths_match": true,
+    "test_window_count_is_100": true,
+    "test_window_width": true,
+    "train_lengths_match": true,
+    "train_window_width": true,
+    "training_labels_equal_final_cycle_rul": true,
+    "uncapped_rul": true,
+    "y_test_finite": true,
+    "y_test_shape": [
+      100
+    ],
+    "y_train_finite": true,
+    "y_train_shape": [
+      17731
+    ]
+  },
+  "raw_checks": {
+    "columns": [
+      "unit_id",
+      "cycle",
+      "setting_1",
+      "setting_2",
+      "setting_3",
+      "sensor_1",
+      "sensor_2",
+      "sensor_3",
+      "sensor_4",
+      "sensor_5",
+      "sensor_6",
+      "sensor_7",
+      "sensor_8",
+      "sensor_9",
+      "sensor_10",
+      "sensor_11",
+      "sensor_12",
+      "sensor_13",
+      "sensor_14",
+      "sensor_15",
+      "sensor_16",
+      "sensor_17",
+      "sensor_18",
+      "sensor_19",
+      "sensor_20",
+      "sensor_21"
+    ],
+    "duplicate_cycles": 0,
+    "engine_ids_1_to_100": true,
+    "input_files_exist": true,
+    "missing_values": 0,
+    "raw_values_finite": true,
+    "rul_shape": [
+      100,
+      1
+    ],
+    "rul_values": 100,
+    "sequential_cycles": true,
+    "test_engines": 100,
+    "test_shape": [
+      13096,
+      26
+    ],
+    "train_engines": 100,
+    "train_shape": [
+      20631,
+      26
+    ]
+  },
+  "scaler_report": {
+    "feature_order": [
+      "setting_1",
+      "setting_2",
+      "sensor_2",
+      "sensor_3",
+      "sensor_4",
+      "sensor_6",
+      "sensor_7",
+      "sensor_8",
+      "sensor_9",
+      "sensor_11",
+      "sensor_12",
+      "sensor_13",
+      "sensor_14",
+      "sensor_15",
+      "sensor_17",
+      "sensor_20",
+      "sensor_21"
+    ],
+    "fit_feature_count": 17,
+    "fit_rows": 20631,
+    "fitted_on": "training_rows_only",
+    "mean": [
+      -8.870146866366145e-06,
+      2.3508312733265463e-06,
+      642.6809335466046,
+      1590.5231186079202,
+      1408.9337816877514,
+      21.609803208763513,
+      553.367711211284,
+      2388.0966516407348,
+      9065.242940720276,
+      47.54116814502448,
+      521.4134700208424,
+      2388.0961523920314,
+      8143.752722117203,
+      8.442145581891328,
+      393.2106538703892,
+      38.81627066065629,
+      23.289705360864716
+    ],
+    "scale": [
+      0.0021872604380133807,
+      0.0002930550220098974,
+      0.50004115093577,
+      6.131000927188836,
+      9.000386644877734,
+      0.0013889512497306162,
+      0.8850708068616238,
+      0.07098375851045081,
+      22.082344331737623,
+      0.26708092559826174,
+      0.7375355171108342,
+      0.07191717269564056,
+      19.075713652092396,
+      0.037504128992332054,
+      1.548725489308388,
+      0.18074204736330857,
+      0.10824825121269074
+    ],
+    "scaler": "StandardScaler"
+  },
+  "warnings": []
+}

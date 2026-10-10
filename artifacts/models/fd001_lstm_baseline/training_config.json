@@ -1,0 +1,23 @@
+{
+  "batch_size": 64,
+  "checkpoint_metric": "validation_rmse",
+  "checkpoint_mode": "min",
+  "data_dir": "artifacts/data/fd001_lstm_baseline",
+  "device": "cpu",
+  "early_stopping_patience": 10,
+  "embeddings_dir": "artifacts/embeddings/fd001_lstm_baseline",
+  "head_dropout": 0.2,
+  "hidden_size": 64,
+  "input_size": 17,
+  "learning_rate": 0.001,
+  "loss": "MSELoss",
+  "lstm_dropout": 0.2,
+  "max_epochs": 100,
+  "metrics_dir": "artifacts/metrics/fd001_lstm_baseline",
+  "model_dir": "artifacts/models/fd001_lstm_baseline",
+  "num_layers": 2,
+  "official_test_evaluation": "not performed by training script",
+  "optimizer": "Adam",
+  "seed": 42,
+  "sequence_length": 30
+}
