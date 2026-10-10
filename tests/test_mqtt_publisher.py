@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from iot.mqtt_publisher import (
@@ -16,6 +17,7 @@ from iot.mqtt_publisher import (
     parse_config,
     publish_replay,
     serialize_sensor_message,
+    verify_replay_delivery,
 )
 from iot.sensor_message import FD001_SENSOR_FEATURES
 
@@ -43,10 +45,18 @@ class PublishResult:
 
 
 class MockMqttClient:
-    def __init__(self, *, connect_rc: int = 0, publish_rc: int = 0, raise_on_publish: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        connect_rc: int = 0,
+        publish_rc: int = 0,
+        raise_on_publish: Exception | None = None,
+        broker: "MockBroker | None" = None,
+    ) -> None:
         self.connect_rc = connect_rc
         self.publish_rc = publish_rc
         self.raise_on_publish = raise_on_publish
+        self.broker = broker
         self.connected_to: tuple[str, int] | None = None
         self.published: list[tuple[str, str, int]] = []
         self.disconnected = False
@@ -59,11 +69,51 @@ class MockMqttClient:
         if self.raise_on_publish is not None:
             raise self.raise_on_publish
         self.published.append((topic, payload, qos))
+        if self.broker is not None:
+            self.broker.deliver(topic, payload)
         return PublishResult(self.publish_rc)
 
     def disconnect(self) -> int:
         self.disconnected = True
         return 0
+
+
+class MockMqttMessage:
+    def __init__(self, topic: str, payload: str) -> None:
+        self.topic = topic
+        self.payload = payload.encode("utf-8")
+
+
+class MockMqttSubscriber(MockMqttClient):
+    def __init__(self, broker: "MockBroker", *, subscribe_rc: int = 0) -> None:
+        super().__init__(broker=broker)
+        self.subscribe_rc = subscribe_rc
+        self.subscribed: list[tuple[str, int]] = []
+        self.loop_started = False
+        self.loop_stopped = False
+        self.on_message = None
+
+    def subscribe(self, topic: str, qos: int = 0) -> tuple[int, int]:
+        self.subscribed.append((topic, qos))
+        self.broker.subscriber = self
+        return (self.subscribe_rc, 1)
+
+    def loop_start(self) -> int:
+        self.loop_started = True
+        return 0
+
+    def loop_stop(self) -> int:
+        self.loop_stopped = True
+        return 0
+
+
+class MockBroker:
+    def __init__(self) -> None:
+        self.subscriber: MockMqttSubscriber | None = None
+
+    def deliver(self, topic: str, payload: str) -> None:
+        if self.subscriber is not None and callable(self.subscriber.on_message):
+            self.subscriber.on_message(self.subscriber, None, MockMqttMessage(topic, payload))
 
 
 def write_temp_fd001(directory: Path, contents: str) -> Path:
@@ -178,12 +228,80 @@ class TestMqttPublisher(unittest.TestCase):
 
         self.assertTrue(client.disconnected)
 
+    def test_verify_replay_delivery_receives_approved_sensor_payload(self) -> None:
+        broker = MockBroker()
+        publisher = MockMqttClient(broker=broker)
+        subscriber = MockMqttSubscriber(broker)
+        config = MqttPublisherConfig(topic="industrial/test", train_path=self.train_path, limit=2)
+
+        result = verify_replay_delivery(
+            config,
+            timeout_seconds=0.1,
+            subscriber_ready_seconds=0,
+            publisher_factory=lambda: publisher,
+            subscriber_factory=lambda: subscriber,
+        )
+
+        decoded = json.loads(result.payload)
+        self.assertEqual(result.topic, "industrial/test")
+        self.assertEqual(tuple(decoded), ("unit_id", "cycle", *FD001_SENSOR_FEATURES))
+        self.assertEqual(result.approved_fields, tuple(decoded))
+        self.assertTrue(subscriber.loop_started)
+        self.assertTrue(subscriber.loop_stopped)
+        self.assertTrue(subscriber.disconnected)
+
+    def test_verify_replay_delivery_times_out_clearly(self) -> None:
+        publisher = MockMqttClient()
+        broker = MockBroker()
+        subscriber = MockMqttSubscriber(broker)
+        config = MqttPublisherConfig(topic="industrial/test", train_path=self.train_path, limit=1)
+
+        with self.assertRaisesRegex(MqttPublisherError, "No MQTT message received"):
+            verify_replay_delivery(
+                config,
+                timeout_seconds=0.01,
+                subscriber_ready_seconds=0,
+                publisher_factory=lambda: publisher,
+                subscriber_factory=lambda: subscriber,
+            )
+
+        self.assertTrue(subscriber.disconnected)
+
+    def test_verify_replay_delivery_rejects_dry_run(self) -> None:
+        config = MqttPublisherConfig(train_path=self.train_path, limit=1, dry_run=True)
+
+        with self.assertRaisesRegex(MqttPublisherError, "requires a real broker"):
+            verify_replay_delivery(config, subscriber_factory=lambda: MockMqttSubscriber(MockBroker()))
+
     def test_missing_paho_dependency_is_reported(self) -> None:
         config = MqttPublisherConfig(train_path=self.train_path, limit=0)
 
         with patch("iot.mqtt_publisher.importlib.import_module", side_effect=ImportError("missing")):
             with self.assertRaisesRegex(MqttPublisherError, "Missing Paho MQTT dependency"):
                 publish_replay(config)
+
+    def test_paho_client_uses_supported_callback_api_version(self) -> None:
+        created_clients: list[MockMqttClient] = []
+        version2 = object()
+
+        def client_factory(*, callback_api_version: object) -> MockMqttClient:
+            self.assertIs(callback_api_version, version2)
+            client = MockMqttClient()
+            created_clients.append(client)
+            return client
+
+        fake_mqtt = SimpleNamespace(
+            CallbackAPIVersion=SimpleNamespace(VERSION2=version2),
+            Client=client_factory,
+        )
+        config = MqttPublisherConfig(train_path=self.train_path, limit=0)
+
+        with patch("iot.mqtt_publisher.importlib.import_module", return_value=fake_mqtt):
+            count = publish_replay(config)
+
+        self.assertEqual(count, 0)
+        self.assertEqual(len(created_clients), 1)
+        self.assertTrue(created_clients[0].disconnected)
 
     def test_main_returns_nonzero_for_failure(self) -> None:
         with patch("iot.mqtt_publisher.publish_replay", side_effect=MqttPublisherError("boom")):
