@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 import torch
 
 from training.fusion_dataset import build_fusion_samples
@@ -54,3 +54,26 @@ def test_split_mismatch_rejected():
             [sensor(1, 1, "train")],
             [log("x", 1, 1, 2, "validation")],
         )
+
+def test_duplicate_log_id_rejected_across_different_cycles():
+    with pytest.raises(ValueError, match="Duplicate log_id"):
+        build_fusion_samples(
+            [sensor(1, 1), sensor(1, 2)],
+            [
+                log("same-id", 1, 1, 2),
+                log("same-id", 1, 2, 3),
+            ],
+        )
+
+
+def test_multiple_logs_are_aggregated_deterministically():
+    result = build_fusion_samples(
+        [sensor(1, 1)],
+        [
+            log("log-b", 1, 1, 6),
+            log("log-a", 1, 1, 2),
+        ],
+    )
+
+    assert result["has_log"].tolist() == [True]
+    assert torch.all(result["text_embeddings"][0] == 4)

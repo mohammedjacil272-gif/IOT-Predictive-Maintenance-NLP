@@ -55,6 +55,7 @@ def build_fusion_samples(
 
     text_by_key = defaultdict(list)
     seen_logs = set()
+    seen_log_ids = set()
 
     for record in text_records:
         key = (record["unit_id"], record["cycle"])
@@ -65,10 +66,15 @@ def build_fusion_samples(
         if record["split"] != sensor_by_key[key]["split"]:
             raise ValueError(f"Split mismatch for {key}")
 
-        log_key = (record["log_id"], record["unit_id"], record["cycle"])
-        if log_key in seen_logs:
-            raise ValueError(f"Duplicate text log: {log_key}")
-        seen_logs.add(log_key)
+        log_id = str(record["log_id"]).strip()
+        if not log_id:
+            raise ValueError("Text record has a missing or empty log_id.")
+
+        if log_id in seen_log_ids:
+            raise ValueError(f"Duplicate log_id: {log_id}")
+
+        seen_log_ids.add(log_id)
+        log_key = (log_id, record["unit_id"], record["cycle"])
 
         embedding = torch.as_tensor(
             record["text_embedding"], dtype=torch.float32
