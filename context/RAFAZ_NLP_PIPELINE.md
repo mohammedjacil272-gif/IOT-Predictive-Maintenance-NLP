@@ -68,3 +68,36 @@ git commit -m "Add NLP pipeline and text embeddings"
 git push -u origin feature/rafaz-nlp-pipeline
 ```
 Open a PR and report entity counts, severity distribution, model/config, embedding shape, tests and limitations.
+
+## Provisional Fusion Integration Contract
+
+Status: Confirmed by Wahid for the current FD001 fusion implementation.
+Real-dataset integration is still pending dataset approval and schema confirmation.
+
+### Join and alignment
+- Join NLP records to sensor windows using `(unit_id, cycle)`.
+- Map NLP `cycle` to sensor metadata `label_cycle`.
+- Never align records by CSV row order.
+- Require matching `source_split` values.
+- If the approved data uses timestamps instead of cycles, define the timestamp-to-window mapping before integration.
+
+### Multiple logs per window
+- Group logs by `(unit_id, cycle)`.
+- Sort logs deterministically by `log_id`.
+- Average their 768-dimensional embeddings for the window.
+
+### Missing and unmatched records
+- Preserve every sensor window.
+- If a sensor window has no matching log, set `has_log=False` and use a zero vector of length 768.
+- Report NLP records that do not match a sensor window; reject them from fusion rather than silently discarding them.
+- Preserve missing IDs, cycles, duplicate IDs, and malformed rows in data-quality reports.
+- Do not invent missing identifiers or silently overwrite duplicate records.
+
+### Baseline and leakage safeguards
+- Keep the frozen sensor-only baseline and its preprocessing artifacts unchanged.
+- Do not use RUL labels, future information, or official test labels for NLP training, tuning, or model selection.
+- Keep synthetic fixture outputs separate from production artifacts.
+
+### Still to confirm
+- Aggregation rules for entity and severity metadata when multiple logs map to one window.
+- Final production output paths and approved real-dataset schema.
