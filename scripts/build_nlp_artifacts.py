@@ -40,7 +40,7 @@ def read_logs(input_path):
         raise ValueError("Input CSV contains no data rows.")
 
     ids = [row["log_id"] for row in logs]
-    if any(not value for value in ids):
+    if any(not value or not value.strip() for value in ids):
         raise ValueError("Every log must have a non-empty log_id.")
 
     if len(ids) != len(set(ids)):
@@ -57,23 +57,43 @@ def write_csv(path, rows, fieldnames):
         writer.writerows(rows)
 
 
-def build(input_path, data_dir, embedding_dir, batch_size=8):
+def build(
+    input_path,
+    data_dir,
+    embedding_dir,
+    batch_size=8,
+    dataset_type="synthetic_fixture",
+):
+    """Build row-aligned NLP artifacts and preserve per-log provenance."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
+
     logs = read_logs(input_path)
     print(f"Loaded {len(logs)} logs from {input_path}")
 
-    # 1. Normalize text while preserving the original input fields.
+    # 1. Normalize text while preserving original input fields.
     processed = preprocess_logs(logs)
 
-    # 2. Extract entities using ORIGINAL text for correct offsets.
+    # 2. Extract entities from ORIGINAL text to preserve character offsets.
     entity_rows = []
 
     for row in processed:
         original = row.get("original_text")
         original = original if isinstance(original, str) else ""
 
-        entity_rows.extend(
-            extract_entities(original, log_id=row["log_id"])
+        extracted_entities = extract_entities(
+            original,
+            log_id=row["log_id"],
         )
+
+        # Preserve the source log and its alignment metadata for each entity.
+        for entity in extracted_entities:
+            entity.update({
+                "unit_id": row.get("unit_id", ""),
+                "cycle": row.get("cycle", ""),
+                "source_split": row.get("source_split", ""),
+            })
+            entity_rows.append(entity)
 
     # 3. Score severity using normalized text.
     severity_rows = []
@@ -93,10 +113,12 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
             "unit_id": row.get("unit_id", ""),
             "cycle": row.get("cycle", ""),
             "source_split": row.get("source_split", ""),
-            **result,
+            "severity_score": result["severity_score"],
+            "severity_label": result["severity_label"],
             "matched_terms": json.dumps(
                 result["matched_terms"], ensure_ascii=False
             ),
+            "explanation": result["explanation"],
         })
 
     # 4. Generate frozen DistilBERT embeddings in batches.
@@ -105,8 +127,7 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
     batches = []
 
     for start in range(0, len(texts), batch_size):
-        batch = texts[start:start + batch_size]
-        batches.append(embedder.encode(batch))
+        batches.append(embedder.encode(texts[start:start + batch_size]))
 
     embeddings = torch.cat(batches, dim=0)
 
@@ -118,11 +139,11 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
     if not torch.isfinite(embeddings).all().item():
         raise RuntimeError("Embeddings contain NaN or infinite values.")
 
-    # Ensure all outputs go to dedicated fixture or agreed artifact paths.
+    # 5. Create output directories only after validation and embedding.
     data_dir.mkdir(parents=True, exist_ok=True)
     embedding_dir.mkdir(parents=True, exist_ok=True)
 
-    # 5. Save processed logs.
+    # 6. Save processed logs, including severity fields.
     processed_fields = list(dict.fromkeys(
         key for row in processed for key in row
     ))
@@ -132,18 +153,23 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
         processed_fields,
     )
 
-    # 6. Save entities as JSON Lines, one entity per line.
+    # 7. Save entities as JSON Lines, one entity per line.
     with (data_dir / "entities.jsonl").open(
         "w", encoding="utf-8"
     ) as file:
         for entity in entity_rows:
             file.write(json.dumps(entity, ensure_ascii=False) + "\n")
 
-    # 7. Save severity separately.
+    # 8. Save per-log severity, preserving identifiers and evidence.
     severity_fields = [
-        "log_id", "unit_id", "cycle", "source_split",
-        "severity_score", "severity_label",
-        "matched_terms", "explanation",
+        "log_id",
+        "unit_id",
+        "cycle",
+        "source_split",
+        "severity_score",
+        "severity_label",
+        "matched_terms",
+        "explanation",
     ]
     write_csv(
         data_dir / "severity.csv",
@@ -151,7 +177,7 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
         severity_fields,
     )
 
-    # 8. Save embedding tensor and row-aligned metadata.
+    # 9. Save the text embedding tensor and row-aligned metadata.
     torch.save(embeddings, embedding_dir / "embeddings.pt")
 
     metadata_rows = []
@@ -169,8 +195,15 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
         })
 
     metadata_fields = [
-        "row_index", "log_id", "unit_id", "cycle", "source_split",
-        "model_name", "max_length", "pooling", "embedding_dim",
+        "row_index",
+        "log_id",
+        "unit_id",
+        "cycle",
+        "source_split",
+        "model_name",
+        "max_length",
+        "pooling",
+        "embedding_dim",
     ]
     write_csv(
         embedding_dir / "embedding_metadata.csv",
@@ -178,10 +211,10 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
         metadata_fields,
     )
 
-    # 9. Save a concise verification report.
+    # 10. Save a verification report with explicit dataset classification.
     report = {
         "input_file": str(input_path),
-        "dataset_type": "synthetic_fixture",
+        "dataset_type": dataset_type,
         "number_of_logs": len(logs),
         "number_of_entities": len(entity_rows),
         "embedding_shape": list(embeddings.shape),
@@ -200,7 +233,9 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
         },
         "official_test_evaluation_performed": False,
         "limitations": [
-            "Input data is a synthetic fixture.",
+            "Input data is a synthetic fixture."
+            if dataset_type == "synthetic_fixture"
+            else "Dataset classification was supplied by the caller.",
             "Severity values are heuristic, not ground truth.",
             "Rule-based NER has not been evaluated on labeled real logs.",
         ],
@@ -212,6 +247,7 @@ def build(input_path, data_dir, embedding_dir, batch_size=8):
         json.dump(report, file, indent=2, ensure_ascii=False)
 
     print("\nPipeline completed successfully.")
+    print(f"Dataset type: {dataset_type}")
     print(f"Logs: {len(logs)}")
     print(f"Entities: {len(entity_rows)}")
     print(f"Embedding shape: {tuple(embeddings.shape)}")
@@ -228,6 +264,22 @@ if __name__ == "__main__":
         help="Path to technician-log CSV",
     )
     parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument(
+        "--data-dir",
+        default="artifacts/data/fd001_nlp_fixture",
+        help="Directory for processed logs, entities, severity, and reports",
+    )
+    parser.add_argument(
+        "--embedding-dir",
+        default="artifacts/embeddings/fd001_nlp_fixture",
+        help="Directory for embeddings and embedding metadata",
+    )
+    parser.add_argument(
+        "--dataset-type",
+        choices=("synthetic_fixture", "approved_real"),
+        default="synthetic_fixture",
+        help="Dataset classification recorded in the report",
+    )
     args = parser.parse_args()
 
     if args.batch_size < 1:
@@ -237,8 +289,19 @@ if __name__ == "__main__":
     if not input_path.is_absolute():
         input_path = ROOT / input_path
 
-    # Separate fixture outputs to avoid overwriting shared project artifacts.
-    data_dir = ROOT / "artifacts" / "data" / "fd001_nlp_fixture"
-    embedding_dir = ROOT / "artifacts" / "embeddings" / "fd001_nlp_fixture"
+    data_dir = Path(args.data_dir)
+    embedding_dir = Path(args.embedding_dir)
 
-    build(input_path, data_dir, embedding_dir, args.batch_size)
+    if not data_dir.is_absolute():
+        data_dir = ROOT / data_dir
+
+    if not embedding_dir.is_absolute():
+        embedding_dir = ROOT / embedding_dir
+
+    build(
+        input_path,
+        data_dir,
+        embedding_dir,
+        args.batch_size,
+        args.dataset_type,
+    )
