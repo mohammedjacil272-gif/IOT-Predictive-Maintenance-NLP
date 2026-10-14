@@ -77,3 +77,30 @@ def test_multiple_logs_are_aggregated_deterministically():
 
     assert result["has_log"].tolist() == [True]
     assert torch.all(result["text_embeddings"][0] == 4)
+
+def test_text_cycle_aligns_to_sensor_label_cycle():
+    sensor_record = {
+        "unit_id": 12,
+        "cycle": 45,  # sourced from sensor label_cycle
+        "split": "validation",
+        "sensor_embedding": [1.0] * 64,
+        "rul": 100.0,
+    }
+
+    text_record = {
+        "log_id": "L001",
+        "unit_id": 12,
+        "cycle": 45,
+        "split": "validation",
+        "text_embedding": [2.0] * 768,
+    }
+
+    result = build_fusion_samples(
+        [sensor_record],
+        [text_record],
+    )
+
+    assert result["unit_id"].tolist() == [12]
+    assert result["cycle"].tolist() == [45]
+    assert result["has_log"].tolist() == [True]
+    assert torch.all(result["text_embeddings"][0] == 2)
