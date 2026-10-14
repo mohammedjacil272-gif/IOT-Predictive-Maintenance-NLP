@@ -1,6 +1,7 @@
 ﻿import pytest
 import torch
 
+from models.multimodal_fusion import MultimodalFusionModel
 from training.fusion_dataset import build_fusion_samples
 
 
@@ -156,3 +157,22 @@ def test_missing_severity_does_not_invent_a_window_score():
         result["severity_by_log_by_window"][0][0]["severity_score"]
         is None
     )
+
+def test_fusion_samples_feed_multimodal_model():
+    samples = build_fusion_samples(
+        [sensor(1, 10), sensor(2, 20)],
+        [log("log-1", 1, 10, 2.0)],
+    )
+
+    model = MultimodalFusionModel()
+    model.eval()
+
+    with torch.no_grad():
+        predictions = model(
+            samples["sensor_embeddings"],
+            samples["text_embeddings"],
+        )
+
+    assert predictions.shape == (2,)
+    assert torch.isfinite(predictions).all()
+    assert samples["has_log"].tolist() == [True, False]
