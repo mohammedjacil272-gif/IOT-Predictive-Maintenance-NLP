@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 import torch
 
 from training.fusion_dataset import build_fusion_samples
@@ -104,3 +104,55 @@ def test_text_cycle_aligns_to_sensor_label_cycle():
     assert result["cycle"].tolist() == [45]
     assert result["has_log"].tolist() == [True]
     assert torch.all(result["text_embeddings"][0] == 2)
+
+def test_provenance_and_window_severity_are_preserved():
+    result = build_fusion_samples(
+        [sensor(1, 10), sensor(1, 20)],
+        [
+            {
+                **log("log_b", 1, 10, 4.0),
+                "entities": [{"entity_text": "overheating", "label": "SYMPTOM"}],
+                "severity_score": 4,
+                "severity_label": "high",
+            },
+            {
+                **log("log_a", 1, 10, 2.0),
+                "entities": [{"entity_text": "bearing", "label": "COMPONENT"}],
+                "severity_score": 2,
+                "severity_label": "medium",
+            },
+        ],
+    )
+
+    assert result["log_ids_by_window"] == [["log_a", "log_b"], []]
+    assert result["window_severity"] == [4.0, None]
+
+    entities = result["entities_by_window"][0]
+    assert [entity["log_id"] for entity in entities] == ["log_a", "log_b"]
+    assert all(entity["unit_id"] == 1 for entity in entities)
+    assert all(entity["cycle"] == 10 for entity in entities)
+
+    severities = result["severity_by_log_by_window"][0]
+    assert [item["severity_score"] for item in severities] == [2.0, 4.0]
+    assert [item["severity_label"] for item in severities] == [
+        "medium", "high"
+    ]
+
+    assert result["has_log"].tolist() == [True, False]
+    assert torch.count_nonzero(result["text_embeddings"][1]).item() == 0
+    assert result["entities_by_window"][1] == []
+    assert result["severity_by_log_by_window"][1] == []
+
+
+def test_missing_severity_does_not_invent_a_window_score():
+    result = build_fusion_samples(
+        [sensor(1, 10)],
+        [log("log_without_severity", 1, 10, 1.0)],
+    )
+
+    assert result["log_ids_by_window"] == [["log_without_severity"]]
+    assert result["window_severity"] == [None]
+    assert (
+        result["severity_by_log_by_window"][0][0]["severity_score"]
+        is None
+    )
