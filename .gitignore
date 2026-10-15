@@ -23,3 +23,12 @@ data/test_FD004.txt
 data/RUL_FD002.txt
 data/RUL_FD003.txt
 data/RUL_FD004.txt
+
+# Local Nestor dataset (keep raw external data out of Git)
+/data/external/nestor/
+
+# Generated NLP validation artifacts
+/artifacts/data/fd001_nlp_fixture/
+/artifacts/embeddings/fd001_nlp_fixture/
+/artifacts/data/nestor_nlp/
+/artifacts/embeddings/nestor_nlp/
