@@ -114,3 +114,9 @@ Optional environment variables:
 
 - `IOT_TRAIN_PATH`: defaults to `data/train_FD001.txt`.
 - `IOT_REPLAY_LIMIT`: defaults to replaying the full training file.
+
+## InfluxDB Sensor Ingestion
+
+Part 5 consumes the MQTT messages above and writes validated records to
+InfluxDB. See [the ingestion guide](influx_sensor_ingestion.md) for local InfluxDB setup,
+environment variables, startup commands, and query examples.
