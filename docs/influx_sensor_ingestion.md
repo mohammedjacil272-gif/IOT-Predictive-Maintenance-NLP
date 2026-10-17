@@ -158,3 +158,27 @@ from(bucket: "industrial_sensors")
 Expected records include `unit_id`, `cycle`, and the selected features in
 `iot.sensor_message.FD001_SENSOR_FEATURES`. The `_time` column is the synthetic
 cycle identity timestamp described above, not a real event timestamp.
+
+## Frozen LSTM inference
+
+The queried JSON records can be passed to the frozen Sensor-only Baseline v1:
+
+```powershell
+python -m iot.lstm_inference .\queried_records.json
+```
+
+The JSON file must contain pivoted records for exactly one `unit_id`. The
+adapter ignores Influx metadata (`_measurement`, `_time`, `_start`, `_stop`,
+and `result`), validates the 17 approved features, sorts by `cycle`, requires
+consecutive cycles, and uses the latest chronological 30-cycle window. It
+returns one RUL prediction without requiring RUL or failure labels.
+
+Inference uses these existing, frozen artifacts and never fits a scaler:
+
+- `artifacts/data/fd001_lstm_baseline/scaler.joblib`
+- `artifacts/models/fd001_lstm_baseline/best_model.pt`
+
+The model input is always `float32` with shape `(1, 30, 17)` and uses the
+feature order defined by `preprocessing.cmapss_fd001.SELECTED_FEATURES`.
+The Influx `_time` value remains only a synthetic cycle identity timestamp; it
+is not interpreted as the physical measurement time.
