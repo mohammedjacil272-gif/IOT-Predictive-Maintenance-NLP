@@ -221,3 +221,65 @@ def build_text_records(
         )
 
     return records
+
+def export_text_records(
+    records: list[dict[str, Any]],
+    output_path: str | Path,
+) -> Path:
+    """Write validated fusion text records to a JSON file."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    serializable_records: list[dict[str, Any]] = []
+
+    for record in records:
+        embedding = record.get("text_embedding")
+
+        if not isinstance(embedding, torch.Tensor):
+            raise ValueError("Each text_embedding must be a torch.Tensor")
+        if embedding.shape != (768,):
+            raise ValueError(
+                f"Expected each text_embedding to have shape (768,), "
+                f"got {tuple(embedding.shape)}"
+            )
+        if not torch.is_floating_point(embedding):
+            raise ValueError("Text embeddings must be floating-point values")
+        if not torch.isfinite(embedding).all().item():
+            raise ValueError("Text embeddings contain NaN or Inf")
+
+        item = dict(record)
+        item["text_embedding"] = embedding.detach().cpu().tolist()
+        serializable_records.append(item)
+
+    output_path.write_text(
+        json.dumps(serializable_records, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Validate NLP artifacts and export fusion text records."
+    )
+    parser.add_argument("--embeddings", required=True, help="Path to embeddings.pt")
+    parser.add_argument("--metadata", required=True, help="Path to embedding_metadata.csv")
+    parser.add_argument("--severity", required=True, help="Path to severity.csv")
+    parser.add_argument("--entities", required=True, help="Path to entities.jsonl")
+    parser.add_argument("--output", required=True, help="Destination JSON file")
+    args = parser.parse_args()
+
+    records = build_text_records(
+        embedding_path=args.embeddings,
+        metadata_path=args.metadata,
+        severity_path=args.severity,
+        entities_path=args.entities,
+    )
+    output_path = export_text_records(records, args.output)
+    print(f"Exported {len(records)} validated text records to {output_path}")
+
+
+if __name__ == "__main__":
+    main()

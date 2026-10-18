@@ -4,7 +4,7 @@ import json
 import pytest
 import torch
 
-from nlp.fusion_adapter import build_text_records
+from nlp.fusion_adapter import build_text_records, export_text_records
 
 
 def create_artifacts(tmp_path, *, split="train", unit_id="1", cycle="10"):
@@ -125,4 +125,43 @@ def test_rejects_non_finite_embeddings(tmp_path):
     with pytest.raises(ValueError, match="NaN or Inf"):
         run_adapter(paths)
 
+def test_export_text_records_round_trip(tmp_path):
+    paths = create_artifacts(tmp_path)
+    records = run_adapter(paths)
+    output_path = tmp_path / "export" / "text_records.json"
 
+    result_path = export_text_records(records, output_path)
+
+    assert result_path == output_path
+    assert output_path.is_file()
+
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    assert len(exported) == 1
+
+    record = exported[0]
+    assert record["log_id"] == "L001"
+    assert record["unit_id"] == 1
+    assert record["cycle"] == 10
+    assert record["split"] == "train"
+    assert len(record["text_embedding"]) == 768
+    assert all(isinstance(value, (int, float)) for value in record["text_embedding"])
+    assert all(torch.isfinite(torch.tensor(record["text_embedding"])))
+    assert record["severity_score"] == 2.0
+    assert record["matched_terms"] == ["moderate"]
+    assert record["entities"][0]["label"] == "COMPONENT"
+
+
+def test_export_rejects_invalid_embedding_shape(tmp_path):
+    records = [{
+        "log_id": "L001",
+        "text_embedding": torch.ones(10),
+    }]
+
+    with pytest.raises(ValueError, match="shape"):
+        export_text_records(records, tmp_path / "invalid.json")
+def test_export_pipeline_rejects_synthetic_fixture_split(tmp_path):
+    paths = create_artifacts(tmp_path, split="fixture")
+
+    with pytest.raises(ValueError, match="Unsupported split"):
+        records = run_adapter(paths)
+        export_text_records(records, tmp_path / "text_records.json")
