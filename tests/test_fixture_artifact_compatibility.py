@@ -1,5 +1,6 @@
-﻿import csv
+import csv
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -8,33 +9,53 @@ import torch
 from training.fusion_dataset import build_fusion_samples
 
 
-def test_real_fixture_artifacts_compatible_with_fusion_interface():
-    root = (
-        Path.home()
-        / "Desktop"
-        / "IOT-Predictive-Maintenance-NLP"
-        / "artifacts"
-    )
+def test_fixture_artifacts_compatible_with_fusion_interface():
+    configured_root = os.environ.get("IOT_NLP_ARTIFACTS")
+
+    if configured_root:
+        root = Path(configured_root)
+    else:
+        root = (
+            Path.home()
+            / "Desktop"
+            / "IOT-Predictive-Maintenance-NLP"
+            / "artifacts"
+        )
+
     data_dir = root / "data" / "fd001_nlp_fixture"
     embedding_dir = root / "embeddings" / "fd001_nlp_fixture"
+
+    required_files = [
+        data_dir / "severity.csv",
+        data_dir / "entities.jsonl",
+        embedding_dir / "embedding_metadata.csv",
+        embedding_dir / "embeddings.pt",
+    ]
+    missing = [str(path) for path in required_files if not path.is_file()]
+    if missing:
+        pytest.skip(
+            "Fixture artifacts unavailable; set IOT_NLP_ARTIFACTS. "
+            f"Missing: {missing}"
+        )
 
     tensor = torch.load(
         embedding_dir / "embeddings.pt",
         map_location="cpu",
         weights_only=True,
     )
+
     with (embedding_dir / "embedding_metadata.csv").open(
         encoding="utf-8", newline=""
     ) as f:
         metadata = list(csv.DictReader(f))
+
     with (data_dir / "severity.csv").open(
         encoding="utf-8", newline=""
     ) as f:
         severity_rows = list(csv.DictReader(f))
+
     with (data_dir / "entities.jsonl").open(encoding="utf-8") as f:
-        entity_rows = [
-            json.loads(line) for line in f if line.strip()
-        ]
+        entity_rows = [json.loads(line) for line in f if line.strip()]
 
     assert isinstance(tensor, torch.Tensor)
     assert tensor.shape == (5, 768)
@@ -57,7 +78,7 @@ def test_real_fixture_artifacts_compatible_with_fusion_interface():
     text_records = []
     sensor_records = []
 
-    for row_index, log_id in enumerate(sorted(metadata_by_id)):
+    for log_id in sorted(metadata_by_id):
         meta = metadata_by_id[log_id]
         severity = severity_by_id[log_id]
 
@@ -82,8 +103,7 @@ def test_real_fixture_artifacts_compatible_with_fusion_interface():
             "explanation": severity["explanation"],
         })
 
-        # Synthetic interface-only placeholder; not real sensor data.
-        # The RUL value is a sentinel and must never be used for training.
+        # Synthetic interface-only placeholder; never use for training.
         sensor_records.append({
             "unit_id": unit_id,
             "cycle": cycle,
