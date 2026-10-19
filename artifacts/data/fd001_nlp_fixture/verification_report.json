@@ -1,0 +1,27 @@
+{
+  "input_file": "C:\\Users\\Rafaz\\Desktop\\IOT-Predictive-Maintenance-NLP-wahid\\tests\\fixtures\\technician_logs.csv",
+  "dataset_type": "synthetic_fixture",
+  "number_of_logs": 5,
+  "number_of_entities": 16,
+  "embedding_shape": [
+    5,
+    768
+  ],
+  "embedding_finite": true,
+  "model_name": "distilbert-base-uncased",
+  "max_length": 128,
+  "pooling": "attention-mask mean pooling",
+  "severity_distribution": {
+    "0": 3,
+    "1": 1,
+    "2": 0,
+    "3": 0,
+    "4": 1
+  },
+  "official_test_evaluation_performed": false,
+  "limitations": [
+    "Input data is a synthetic fixture.",
+    "Severity values are heuristic, not ground truth.",
+    "Rule-based NER has not been evaluated on labeled real logs."
+  ]
+}

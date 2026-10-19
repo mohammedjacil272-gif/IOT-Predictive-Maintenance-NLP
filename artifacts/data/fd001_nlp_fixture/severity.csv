@@ -1,0 +1,6 @@
+log_id,unit_id,cycle,source_split,severity_score,severity_label,matched_terms,explanation
+L001,12,45,fixture,4,critical,"[{""term"": ""critical"", ""score"": 4, ""start"": 0, ""end"": 8}]",Highest unnegated rule-based severity term
+L002,12,46,fixture,1,low,"[{""term"": ""minor"", ""score"": 1, ""start"": 0, ""end"": 5}]",Highest unnegated rule-based severity term
+L003,13,20,fixture,0,unknown,[],No unnegated severity term matched
+L004,14,31,fixture,0,unknown,[],No unnegated severity term matched
+L005,15,32,fixture,0,unknown,[],No unnegated severity term matched
