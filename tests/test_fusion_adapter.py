@@ -165,3 +165,43 @@ def test_export_pipeline_rejects_synthetic_fixture_split(tmp_path):
     with pytest.raises(ValueError, match="Unsupported split"):
         records = run_adapter(paths)
         export_text_records(records, tmp_path / "text_records.json")
+
+
+def test_rejects_entity_cycle_mismatch(tmp_path):
+    paths = create_artifacts(tmp_path)
+    entities_path = paths[3]
+
+    entities_path.write_text(
+        json.dumps({
+            "log_id": "L001",
+            "unit_id": "1",
+            "cycle": 999,
+            "source_split": "train",
+            "entity_text": "bearing",
+            "label": "COMPONENT",
+        }) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Entity cycle mismatch"):
+        run_adapter(paths)
+
+
+def test_rejects_entity_unit_id_mismatch(tmp_path):
+    paths = create_artifacts(tmp_path)
+    entities_path = paths[3]
+
+    entities_path.write_text(
+        json.dumps({
+            "log_id": "L001",
+            "unit_id": "999",
+            "cycle": 10,
+            "source_split": "train",
+            "entity_text": "bearing",
+            "label": "COMPONENT",
+        }) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Entity unit_id mismatch"):
+        run_adapter(paths)
