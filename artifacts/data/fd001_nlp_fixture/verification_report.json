@@ -1,5 +1,5 @@
 {
-  "input_file": "C:\\Users\\Rafaz\\Desktop\\IOT-Predictive-Maintenance-NLP-wahid\\tests\\fixtures\\technician_logs.csv",
+  "input_file": "tests/fixtures/technician_logs.csv",
   "dataset_type": "synthetic_fixture",
   "number_of_logs": 5,
   "number_of_entities": 16,
