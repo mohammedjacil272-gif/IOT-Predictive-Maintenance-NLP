@@ -166,10 +166,13 @@ def predict_records(
     fitted_scaler = scaler if scaler is not None else joblib.load(scaler_path)
     input_tensor, unit_id, start_cycle, end_cycle = build_model_input(records, fitted_scaler)
     inference_model = model if model is not None else load_frozen_model(model_path)
-    inference_model.eval()
-    with torch.no_grad():
-        output = inference_model(input_tensor)
-    prediction_array = output.detach().cpu().reshape(-1).numpy()
+    try:
+        inference_model.eval()
+        with torch.no_grad():
+            output = inference_model(input_tensor)
+        prediction_array = output.detach().cpu().reshape(-1).numpy()
+    except Exception as exc:  # noqa: BLE001 - normalize model failures at the adapter boundary.
+        raise LSTMInferenceError(f"Frozen model failed during inference: {exc}") from exc
     if prediction_array.size != 1 or not np.isfinite(prediction_array[0]):
         raise LSTMInferenceError("Model returned an invalid prediction.")
     return InferenceResult(unit_id, start_cycle, end_cycle, float(prediction_array[0]), input_tensor)

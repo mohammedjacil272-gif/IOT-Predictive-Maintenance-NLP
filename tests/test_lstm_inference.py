@@ -1,3 +1,6 @@
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -46,7 +49,39 @@ class ConstantModel:
         return torch.tensor([12.5], dtype=torch.float32)
 
 
+class FailingScaler:
+    def transform(self, values: np.ndarray) -> np.ndarray:
+        raise RuntimeError("scaler unavailable")
+
+
+class InvalidOutputModel:
+    def __init__(self, output: torch.Tensor) -> None:
+        self.output = output
+
+    def eval(self) -> "InvalidOutputModel":
+        return self
+
+    def __call__(self, values: torch.Tensor) -> torch.Tensor:
+        return self.output
+
+
+class FailingModel:
+    def eval(self) -> "FailingModel":
+        return self
+
+    def __call__(self, values: torch.Tensor) -> torch.Tensor:
+        raise RuntimeError("model unavailable")
+
+
 class TestLSTMInference(unittest.TestCase):
+    def test_final_tensor_preserves_exact_17_feature_order(self) -> None:
+        scaler = IdentityScaler()
+        tensor, _, _, _ = build_model_input(records(), scaler)
+
+        expected = np.arange(1, len(SELECTED_FEATURES) + 1, dtype=np.float32)
+        np.testing.assert_array_equal(tensor[0, 0].numpy(), expected)
+        np.testing.assert_array_equal(scaler.values[0], expected)
+
     def test_normalization_ignores_influx_metadata_and_orders_cycles(self) -> None:
         normalized = normalize_sensor_records(list(reversed(records())))
         self.assertEqual([row["cycle"] for row in normalized], list(range(1, 31)))
@@ -59,6 +94,37 @@ class TestLSTMInference(unittest.TestCase):
         self.assertEqual((1, 30, 17), tuple(tensor.shape))
         self.assertEqual((7, 6, 35), (unit_id, start, end))
         self.assertEqual(tensor.dtype, torch.float32)
+
+    def test_cycle_boundaries_and_latest_contiguous_window(self) -> None:
+        with self.assertRaisesRegex(LSTMInferenceError, "At least one"):
+            build_model_input(records(1, 0), IdentityScaler())
+
+        for count in (1, 29):
+            with self.subTest(count=count), self.assertRaisesRegex(LSTMInferenceError, "At least 30"):
+                build_model_input(records(1, count), IdentityScaler())
+
+        _, unit_id, start, end = build_model_input(records(1, 30), IdentityScaler())
+        self.assertEqual((unit_id, start, end), (7, 1, 30))
+
+        _, unit_id, start, end = build_model_input(records(1, 31), IdentityScaler())
+        self.assertEqual((unit_id, start, end), (7, 2, 31))
+
+        with self.assertRaisesRegex(LSTMInferenceError, "Cycle gap"):
+            build_model_input(
+                records(1, 14) + records(16, 17),
+                IdentityScaler(),
+            )
+
+    def test_latest_window_values_are_selected_after_cycle_sorting(self) -> None:
+        source = records(1, 35)
+        for row in source:
+            row["setting_1"] = float(row["cycle"])
+
+        tensor, _, start, end = build_model_input(list(reversed(source)), IdentityScaler())
+
+        self.assertEqual((start, end), (6, 35))
+        self.assertEqual(float(tensor[0, 0, 0]), 6.0)
+        self.assertEqual(float(tensor[0, -1, 0]), 35.0)
 
     def test_malformed_windows_are_rejected(self) -> None:
         for bad_records, message in (
@@ -85,6 +151,27 @@ class TestLSTMInference(unittest.TestCase):
         with self.assertRaisesRegex(LSTMInferenceError, "forbidden label"):
             normalize_sensor_records(labeled)
 
+    def test_malformed_queried_records_are_rejected(self) -> None:
+        cases = (
+            (None, "must be a mapping"),
+            ({"unit_id": "7", "cycle": 1}, "missing required fields"),
+            ({**records(1, 1)[0], "unexpected": 1}, "unexpected fields"),
+        )
+        for value, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(LSTMInferenceError, message):
+                normalize_sensor_records([value])  # type: ignore[list-item]
+
+    def test_duplicate_cycles_and_mixed_units_are_rejected(self) -> None:
+        duplicate = records(1, 30)
+        duplicate[1]["cycle"] = duplicate[0]["cycle"]
+        with self.assertRaisesRegex(LSTMInferenceError, "Duplicate cycle"):
+            normalize_sensor_records(duplicate)
+
+        mixed = records()
+        mixed[-1]["unit_id"] = "8"
+        with self.assertRaisesRegex(LSTMInferenceError, "exactly one unit_id"):
+            normalize_sensor_records(mixed)
+
     def test_invalid_unit_ids_are_rejected_as_inference_errors(self) -> None:
         for value in (float("nan"), float("inf"), -float("inf"), "not-an-id", True, 0, -1):
             with self.subTest(value=value), self.assertRaisesRegex(LSTMInferenceError, "unit_id must be a positive integer"):
@@ -105,6 +192,37 @@ class TestLSTMInference(unittest.TestCase):
         self.assertEqual(result.prediction, 12.5)
         self.assertTrue(model.eval_called)
         self.assertEqual(tuple(model.input.shape), (1, 30, 17))
+
+    def test_scaler_failure_is_reported_as_inference_error(self) -> None:
+        with self.assertRaisesRegex(LSTMInferenceError, "Frozen scaler failed"):
+            build_model_input(records(), FailingScaler())
+
+    def test_model_failure_is_reported_as_inference_error(self) -> None:
+        with self.assertRaisesRegex(LSTMInferenceError, "Frozen model failed"):
+            predict_records(records(), scaler=IdentityScaler(), model=FailingModel())
+
+    def test_invalid_model_outputs_are_rejected(self) -> None:
+        for output in (torch.empty(0), torch.tensor([1.0, 2.0]), torch.tensor([float("nan")])):
+            with self.subTest(output=output), self.assertRaisesRegex(LSTMInferenceError, "invalid prediction"):
+                predict_records(
+                    records(),
+                    scaler=IdentityScaler(),
+                    model=InvalidOutputModel(output),
+                )
+
+    def test_cli_reports_malformed_json_with_nonzero_exit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "records.json"
+            input_path.write_text("{not-json", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-m", "iot.lstm_inference", str(input_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("LSTM inference error:", result.stdout)
 
     def test_frozen_artifacts_predict_without_live_services(self) -> None:
         result = predict_records(
