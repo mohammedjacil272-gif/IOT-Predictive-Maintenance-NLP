@@ -56,6 +56,35 @@ def test_split_mismatch_rejected():
             [log("x", 1, 1, 2, "validation")],
         )
 
+
+def test_equipment_split_leakage_rejected_without_text_records():
+    with pytest.raises(ValueError, match="Equipment split leakage"):
+        build_fusion_samples(
+            [sensor(1, 1, "train"), sensor(1, 2, "validation")],
+            [],
+        )
+
+
+def test_required_alignment_provenance_is_validated():
+    text = log("log-1", 1, 1, 2)
+    del text["split"]
+    with pytest.raises(ValueError, match="Text record is missing fields.*split"):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
+def test_entity_provenance_mismatch_rejected():
+    text = log("log-1", 1, 1, 2)
+    text["entities"] = [{"log_id": "different-log", "label": "SYMPTOM"}]
+    with pytest.raises(ValueError, match="Entity provenance mismatch.*log_id"):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
+def test_fusion_uses_supplied_uncapped_baseline_rul_label():
+    record = sensor(1, 30)
+    record["rul"] = 0.0  # Baseline label at its maximum-cycle window.
+    result = build_fusion_samples([record], [])
+    assert result["rul"].tolist() == [0.0]
+
 def test_duplicate_log_id_rejected_across_different_cycles():
     with pytest.raises(ValueError, match="Duplicate log_id"):
         build_fusion_samples(
