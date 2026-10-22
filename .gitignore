@@ -23,3 +23,4 @@ data/test_FD004.txt
 data/RUL_FD002.txt
 data/RUL_FD003.txt
 data/RUL_FD004.txt
+!artifacts/embeddings/fd001_nlp_fixture/embeddings.pt
