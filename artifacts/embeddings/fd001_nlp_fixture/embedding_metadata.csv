@@ -1,0 +1,6 @@
+row_index,log_id,unit_id,cycle,source_split,model_name,max_length,pooling,embedding_dim
+0,L001,12,45,fixture,distilbert-base-uncased,128,attention-mask mean pooling,768
+1,L002,12,46,fixture,distilbert-base-uncased,128,attention-mask mean pooling,768
+2,L003,13,20,fixture,distilbert-base-uncased,128,attention-mask mean pooling,768
+3,L004,14,31,fixture,distilbert-base-uncased,128,attention-mask mean pooling,768
+4,L005,15,32,fixture,distilbert-base-uncased,128,attention-mask mean pooling,768
