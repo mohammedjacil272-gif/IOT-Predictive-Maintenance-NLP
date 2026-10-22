@@ -15,11 +15,20 @@ Build fusion and its evaluation harness using mock text embeddings for tests, so
 
 ## Interface contract
 - Sensor embeddings: float array/tensor `[batch, 64]`, traceable to sensor-window metadata.
-- Text embeddings: float array/tensor `[batch, 768]`, traceable to `log_id`, `unit_id`, and cycle/window.
-- Target: scalar RUL from training/validation split only.
+- Text embeddings: float array/tensor `[batch, 768]`, traceable to `log_id`, `unit_id`, `cycle`, and `split`.
+- Canonical key: `(unit_id, cycle)`. `cycle` is the sensor window's `label_cycle` (the window-end cycle). Records are joined by this key, never by array position.
+- Shared cycle semantics and mapping between log equipment IDs and sensor equipment IDs are **PENDING validation on genuine paired data**. No mapping is inferred or fabricated here.
+- Sensor target: consume the baseline-provided `label_rul` unchanged. Its frozen definition is uncapped `max_cycle(unit) - cycle`; fusion must not recalculate or cap it.
 - Output: one unconstrained scalar RUL prediction per joined sample.
-- Join by stable metadata keys and alignment rules, never by array index alone.
-- Represent missing text explicitly (`has_log` or a documented missing-text vector); do not silently discard those windows.
+- Equipment must belong to one split only. Sensor/text split values must agree; the frozen baseline's train/validation engine assignment is authoritative for real fusion inputs.
+- Preserve `log_id`, `unit_id`, `cycle`, and `split`, plus existing entity and severity provenance. Validate supplied provenance instead of silently accepting mismatches.
+- Missing text currently yields a zero 768-D vector and `has_log=False`; multiple logs currently sort by `log_id` and use a mean embedding. These are **proposed production policies pending team approval**.
+- Do not invent timestamps or availability information. The present technician-log pipeline provides no creation/availability timestamps, so point-in-time availability is **PENDING**. Do not claim that a log was available by a sensor window's prediction time without genuine timestamped evidence.
+- Prediction cutoff and operational RUL horizon are **PENDING approval**.
+
+## Fixture and evidence boundary
+
+The existing five-record technician-log fixture is synthetic interface/provenance validation only. Its `fixture` split and synthetic sensor vectors must remain identifiable as synthetic; it must never be described as paired FD001 data or real-world fusion performance. The compatibility verifier may inspect real baseline metadata read-only, but must not map fixture rows into baseline train, validation, or test splits. No genuine paired equipment mapping, timestamp, or train/validation/test pairing is currently established.
 
 ## Tasks
 1. Implement an initial feature-concatenation model: concatenate 64-D sensor and 768-D text vectors, then an MLP regression head. Keep config explicit.

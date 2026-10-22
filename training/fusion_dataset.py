@@ -16,6 +16,10 @@ def build_fusion_samples(
 ) -> dict[str, Any]:
     """Align sensor windows and NLP records by (unit_id, cycle).
 
+    ``cycle`` is the sensor window's label_cycle/window-end cycle. This key's
+    real-world equipment-ID mapping and shared cycle semantics remain pending
+    validation against genuine paired data.
+
     Sensor records require:
         unit_id, cycle, split, sensor_embedding, rul
 
@@ -35,10 +39,46 @@ def build_fusion_samples(
     """
 
     sensor_by_key = {}
+    split_by_unit = {}
 
     # Validate and index sensor windows.
     for record in sensor_records:
+        missing = {
+            "unit_id", "cycle", "split", "sensor_embedding", "rul"
+        } - record.keys()
+        if missing:
+            raise ValueError(
+                f"Sensor record is missing fields: {sorted(missing)}"
+            )
+
         key = (record["unit_id"], record["cycle"])
+
+        if not isinstance(record["unit_id"], int) or isinstance(
+            record["unit_id"], bool
+        ):
+            raise ValueError(
+                f"Sensor unit_id must be an integer: {record['unit_id']!r}"
+            )
+        if not isinstance(record["cycle"], int) or isinstance(
+            record["cycle"], bool
+        ):
+            raise ValueError(
+                f"Sensor cycle must be an integer: {record['cycle']!r}"
+            )
+        if record["cycle"] < 1:
+            raise ValueError(f"Sensor cycle must be positive for {key}.")
+        split = record["split"]
+        if not isinstance(split, str) or not split.strip():
+            raise ValueError(
+                f"Sensor split must be a non-empty string for {key}."
+            )
+
+        previous_split = split_by_unit.setdefault(record["unit_id"], split)
+        if previous_split != split:
+            raise ValueError(
+                f"Equipment split leakage for unit {record['unit_id']}: "
+                f"{previous_split!r} and {split!r}."
+            )
 
         if key in sensor_by_key:
             raise ValueError(f"Duplicate sensor window: {key}")
@@ -71,7 +111,34 @@ def build_fusion_samples(
 
     # Validate and group NLP records by sensor window.
     for record in text_records:
+        missing = {
+            "log_id", "unit_id", "cycle", "split", "text_embedding"
+        } - record.keys()
+        if missing:
+            raise ValueError(
+                f"Text record is missing fields: {sorted(missing)}"
+            )
+
         key = (record["unit_id"], record["cycle"])
+
+        if not isinstance(record["unit_id"], int) or isinstance(
+            record["unit_id"], bool
+        ):
+            raise ValueError(
+                f"Text unit_id must be an integer: {record['unit_id']!r}"
+            )
+        if not isinstance(record["cycle"], int) or isinstance(
+            record["cycle"], bool
+        ):
+            raise ValueError(
+                f"Text cycle must be an integer: {record['cycle']!r}"
+            )
+        if record["cycle"] < 1:
+            raise ValueError(f"Text cycle must be positive for {key}.")
+        if not isinstance(record["split"], str) or not record["split"].strip():
+            raise ValueError(
+                f"Text split must be a non-empty string for {key}."
+            )
 
         if key not in sensor_by_key:
             raise ValueError(
@@ -81,9 +148,10 @@ def build_fusion_samples(
         if record["split"] != sensor_by_key[key]["split"]:
             raise ValueError(f"Split mismatch for {key}")
 
-        log_id = str(record["log_id"]).strip()
-        if not log_id:
+        raw_log_id = record["log_id"]
+        if not isinstance(raw_log_id, str) or not raw_log_id.strip():
             raise ValueError("Text record has a missing or empty log_id.")
+        log_id = raw_log_id.strip()
 
         if log_id in seen_log_ids:
             raise ValueError(f"Duplicate log_id: {log_id}")

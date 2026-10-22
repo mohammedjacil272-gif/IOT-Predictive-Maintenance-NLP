@@ -1,0 +1,16 @@
+{"log_id": "L001", "entity_text": "Critical", "label": "SEVERITY_TERM", "start": 0, "end": 8, "rule_source_id": "maintenance_rules_v1:SEVERITY_TERM:critical", "unit_id": "12", "cycle": "45", "source_split": "fixture"}
+{"log_id": "L001", "entity_text": "bearing", "label": "COMPONENT", "start": 9, "end": 16, "rule_source_id": "maintenance_rules_v1:COMPONENT:bearing", "unit_id": "12", "cycle": "45", "source_split": "fixture"}
+{"log_id": "L001", "entity_text": "wear", "label": "FAULT", "start": 17, "end": 21, "rule_source_id": "maintenance_rules_v1:FAULT:wear", "unit_id": "12", "cycle": "45", "source_split": "fixture"}
+{"log_id": "L001", "entity_text": "Inspect", "label": "ACTION", "start": 32, "end": 39, "rule_source_id": "maintenance_rules_v1:ACTION:inspect", "unit_id": "12", "cycle": "45", "source_split": "fixture"}
+{"log_id": "L001", "entity_text": "engine", "label": "COMPONENT", "start": 44, "end": 50, "rule_source_id": "maintenance_rules_v1:COMPONENT:engine", "unit_id": "12", "cycle": "45", "source_split": "fixture"}
+{"log_id": "L002", "entity_text": "Minor", "label": "SEVERITY_TERM", "start": 0, "end": 5, "rule_source_id": "maintenance_rules_v1:SEVERITY_TERM:minor", "unit_id": "12", "cycle": "46", "source_split": "fixture"}
+{"log_id": "L002", "entity_text": "vibration", "label": "SYMPTOM", "start": 6, "end": 15, "rule_source_id": "maintenance_rules_v1:SYMPTOM:vibration", "unit_id": "12", "cycle": "46", "source_split": "fixture"}
+{"log_id": "L002", "entity_text": "fan", "label": "COMPONENT", "start": 34, "end": 37, "rule_source_id": "maintenance_rules_v1:COMPONENT:fan", "unit_id": "12", "cycle": "46", "source_split": "fixture"}
+{"log_id": "L003", "entity_text": "Bearing", "label": "COMPONENT", "start": 0, "end": 7, "rule_source_id": "maintenance_rules_v1:COMPONENT:bearing", "unit_id": "13", "cycle": "20", "source_split": "fixture"}
+{"log_id": "L003", "entity_text": "95°C", "label": "MEASUREMENT", "start": 28, "end": 32, "rule_source_id": "maintenance_rules_v1:MEASUREMENT", "unit_id": "13", "cycle": "20", "source_split": "fixture"}
+{"log_id": "L003", "entity_text": "1200 rpm", "label": "MEASUREMENT", "start": 36, "end": 44, "rule_source_id": "maintenance_rules_v1:MEASUREMENT", "unit_id": "13", "cycle": "20", "source_split": "fixture"}
+{"log_id": "L004", "entity_text": "critical", "label": "SEVERITY_TERM", "start": 3, "end": 11, "rule_source_id": "maintenance_rules_v1:SEVERITY_TERM:critical", "unit_id": "14", "cycle": "31", "source_split": "fixture"}
+{"log_id": "L005", "entity_text": "Lubricate", "label": "ACTION", "start": 0, "end": 9, "rule_source_id": "maintenance_rules_v1:ACTION:lubricate", "unit_id": "15", "cycle": "32", "source_split": "fixture"}
+{"log_id": "L005", "entity_text": "shaft", "label": "COMPONENT", "start": 14, "end": 19, "rule_source_id": "maintenance_rules_v1:COMPONENT:shaft", "unit_id": "15", "cycle": "32", "source_split": "fixture"}
+{"log_id": "L005", "entity_text": "monitor", "label": "ACTION", "start": 24, "end": 31, "rule_source_id": "maintenance_rules_v1:ACTION:monitor", "unit_id": "15", "cycle": "32", "source_split": "fixture"}
+{"log_id": "L005", "entity_text": "vibration", "label": "SYMPTOM", "start": 32, "end": 41, "rule_source_id": "maintenance_rules_v1:SYMPTOM:vibration", "unit_id": "15", "cycle": "32", "source_split": "fixture"}
