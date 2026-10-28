@@ -22,6 +22,16 @@ if str(ROOT) not in sys.path:
 from training.fusion_dataset import build_fusion_samples
 
 
+def build_fixture_samples(sensor_records, text_records):
+    """Call the interface with explicit synthetic provenance and policies."""
+    return build_fusion_samples(
+        [dict(row, namespace="synthetic_fixture") for row in sensor_records],
+        [dict(row, namespace="synthetic_fixture") for row in text_records],
+        missing_log_policy="zero_vector",
+        multiple_log_policy="mean_sorted_log_id",
+    )
+
+
 # Resolve artifacts from the current repository worktree.
 DATA_DIR = ROOT / "artifacts" / "data" / "fd001_nlp_fixture"
 EMBED_DIR = ROOT / "artifacts" / "embeddings" / "fd001_nlp_fixture"
@@ -391,7 +401,7 @@ def main():
     })
 
     # Verify compatibility through the canonical fusion interface.
-    result = build_fusion_samples(sensor_records, text_records)
+    result = build_fixture_samples(sensor_records, text_records)
 
     expected_count = len(sensor_records)
 

@@ -2,7 +2,20 @@
 import torch
 
 from models.multimodal_fusion import MultimodalFusionModel
-from training.fusion_dataset import build_fusion_samples
+from training.fusion_dataset import build_fusion_samples as _build_fusion_samples
+
+
+def build_fusion_samples(sensor_records, text_records, **kwargs):
+    # Test-only explicit fixture namespace and provisional policy selection.
+    sensor_records = [dict(row, namespace=row.get("namespace", "synthetic_fixture")) for row in sensor_records]
+    text_records = [dict(row, namespace=row.get("namespace", "synthetic_fixture")) for row in text_records]
+    return _build_fusion_samples(
+        sensor_records,
+        text_records,
+        missing_log_policy=kwargs.pop("missing_log_policy", "zero_vector"),
+        multiple_log_policy=kwargs.pop("multiple_log_policy", "mean_sorted_log_id"),
+        **kwargs,
+    )
 
 
 def sensor(unit, cycle, split="train"):
@@ -42,6 +55,11 @@ def test_alignment_and_missing_text():
 def test_duplicate_sensor_window_rejected():
     with pytest.raises(ValueError, match="Duplicate sensor"):
         build_fusion_samples([sensor(1, 1), sensor(1, 1)], [])
+
+
+def test_invalid_cycle_rejected():
+    with pytest.raises(ValueError, match="positive integer"):
+        build_fusion_samples([sensor(1, 0)], [])
 
 
 def test_unmatched_text_rejected():
@@ -107,6 +125,59 @@ def test_multiple_logs_are_aggregated_deterministically():
 
     assert result["has_log"].tolist() == [True]
     assert torch.all(result["text_embeddings"][0] == 4)
+    assert result["log_ids_by_window"] == [["log-a", "log-b"]]
+
+
+def test_namespace_mismatch_rejected():
+    sensor_row = dict(sensor(1, 1), namespace="synthetic_fixture")
+    text_row = dict(log("x", 1, 1, 2), namespace="genuine")
+    with pytest.raises(ValueError, match="namespace mismatch"):
+        _build_fusion_samples(
+            [sensor_row], [text_row],
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+        )
+
+
+def test_ambiguous_namespaces_within_sensor_records_rejected():
+    first = dict(sensor(1, 1), namespace="synthetic_fixture")
+    second = dict(sensor(2, 1), namespace="genuine")
+    with pytest.raises(ValueError, match="Ambiguous Sensor namespaces"):
+        _build_fusion_samples(
+            [first, second], [],
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+        )
+
+
+def test_missing_namespace_rejected():
+    with pytest.raises(ValueError, match="explicit namespace"):
+        _build_fusion_samples(
+            [sensor(1, 1)], [],
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+        )
+
+
+def test_embedding_with_infinity_rejected():
+    bad_sensor = sensor(1, 1)
+    bad_sensor["sensor_embedding"][0] = float("inf")
+    with pytest.raises(ValueError, match="Non-finite Sensor"):
+        build_fusion_samples([bad_sensor], [])
+
+
+def test_malformed_text_embedding_rejected():
+    bad_text = log("bad", 1, 1, 1)
+    bad_text["text_embedding"] = [float("nan")] * 768
+    with pytest.raises(ValueError, match="Non-finite Text"):
+        build_fusion_samples([sensor(1, 1)], [bad_text])
+
+
+def test_unapproved_policies_have_no_implicit_defaults():
+    with pytest.raises(ValueError, match="Select missing_log_policy explicitly"):
+        _build_fusion_samples(
+            [dict(sensor(1, 1), namespace="synthetic_fixture")], [],
+        )
 
 def test_text_cycle_aligns_to_sensor_label_cycle():
     sensor_record = {
@@ -134,6 +205,24 @@ def test_text_cycle_aligns_to_sensor_label_cycle():
     assert result["cycle"].tolist() == [45]
     assert result["has_log"].tolist() == [True]
     assert torch.all(result["text_embeddings"][0] == 2)
+
+
+def test_embedding_index_never_participates_in_cross_modal_alignment():
+    sensor_record = sensor(12, 45)
+    sensor_record["embedding_index"] = 900
+    text_record = log("L-index-independent", 12, 45, 3.0)
+    text_record["embedding_index"] = 0
+    result = build_fusion_samples([sensor_record], [text_record])
+    assert result["unit_id"].tolist() == [12]
+    assert result["cycle"].tolist() == [45]
+    assert result["log_ids_by_window"] == [["L-index-independent"]]
+
+
+def test_supplied_rul_is_consumed_unchanged():
+    sensor_record = sensor(12, 45)
+    sensor_record["rul"] = 55.25
+    result = build_fusion_samples([sensor_record], [])
+    assert result["rul"].tolist() == [55.25]
 
 def test_provenance_and_window_severity_are_preserved():
     result = build_fusion_samples(
@@ -193,7 +282,7 @@ def test_fusion_samples_feed_multimodal_model():
         [log("log-1", 1, 10, 2.0)],
     )
 
-    model = MultimodalFusionModel()
+    model = MultimodalFusionModel(use_has_log=False)
     model.eval()
 
     with torch.no_grad():

@@ -23,6 +23,8 @@ Build fusion and its evaluation harness using mock text embeddings for tests, so
 - Equipment must belong to one split only. Sensor/text split values must agree; the frozen baseline's train/validation engine assignment is authoritative for real fusion inputs.
 - Preserve `log_id`, `unit_id`, `cycle`, and `split`, plus existing entity and severity provenance. Validate supplied provenance instead of silently accepting mismatches.
 - Missing text currently yields a zero 768-D vector and `has_log=False`; multiple logs currently sort by `log_id` and use a mean embedding. These are **proposed production policies pending team approval**.
+- The adapter now requires callers to explicitly select missing- and multiple-log policies; it does not silently select a production default. Model construction also requires explicit `use_has_log=True/False`. `has_log` is excluded unless selected, and the production choice remains **PENDING approval**.
+- Genuine records fail closed unless the approved register supplies dataset, mapping, cycle, timestamp, cutoff/horizon, split/evaluation, embedding-provenance, and log-policy approvals. Genuine log records must preserve distinct `event_time`, `record_creation_time`, `ingestion_time`, and `availability_time` values plus source-system identifiers. Timestamp timezone, cutoff, and late-arrival semantics are not inferred.
 - Do not invent timestamps or availability information. The present technician-log pipeline provides no creation/availability timestamps, so point-in-time availability is **PENDING**. Do not claim that a log was available by a sensor window's prediction time without genuine timestamped evidence.
 - Prediction cutoff and operational RUL horizon are **PENDING approval**.
 

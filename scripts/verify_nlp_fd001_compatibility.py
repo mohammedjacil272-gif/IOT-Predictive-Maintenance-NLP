@@ -7,7 +7,7 @@ This script verifies:
 - metadata consistency
 - canonical (unit_id, cycle) alignment
 - fixture split preservation
-- compatibility with build_fusion_samples()
+- compatibility with build_fixture_samples()
 - rejection of invalid embedding dimensions
 - rejection of inconsistent metadata
 - rejection of fabricated FD001 train/validation mappings
@@ -23,6 +23,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from training.fusion_dataset import build_fusion_samples
+
+
+def build_fixture_samples(sensor_records, text_records):
+    """Keep fixture namespaces isolated and select provisional test policies."""
+    return build_fusion_samples(
+        [dict(row, namespace="synthetic_fixture") for row in sensor_records],
+        [dict(row, namespace="synthetic_fixture") for row in text_records],
+        missing_log_policy="zero_vector",
+        multiple_log_policy="mean_sorted_log_id",
+    )
 
 
 DATA_DIR = ROOT / "artifacts" / "data" / "fd001_nlp_fixture"
@@ -201,7 +211,7 @@ def main():
     # ---------------------------------------------------------
     # 5. Valid canonical fusion interface
     # ---------------------------------------------------------
-    result = build_fusion_samples(
+    result = build_fixture_samples(
         sensor_records,
         text_records,
     )
@@ -228,7 +238,7 @@ def main():
     print()
     print(
         "PASS: Actual NLP artifacts consumed by "
-        "build_fusion_samples()"
+        "build_fixture_samples()"
     )
 
     print("PASS: Sensor embeddings = 64-D")
@@ -261,7 +271,7 @@ def main():
 
     expect_failure(
         "Invalid 767-D text embedding is rejected",
-        lambda: build_fusion_samples(
+        lambda: build_fixture_samples(
             sensor_records,
             bad_text,
         ),
@@ -279,7 +289,7 @@ def main():
 
     expect_failure(
         "Inconsistent unit_id metadata is rejected",
-        lambda: build_fusion_samples(
+        lambda: build_fixture_samples(
             sensor_records,
             bad_metadata,
         ),
@@ -310,7 +320,7 @@ def main():
                 "FD001 train/validation metadata."
             )
 
-        build_fusion_samples(
+        build_fixture_samples(
             sensor_records,
             fabricated_split,
         )

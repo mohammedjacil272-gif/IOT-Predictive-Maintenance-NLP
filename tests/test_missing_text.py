@@ -1,6 +1,16 @@
 ﻿import torch
 
-from training.fusion_dataset import build_fusion_samples
+from training.fusion_dataset import build_fusion_samples as _build_fusion_samples
+
+
+def build_fusion_samples(sensor_records, text_records, **kwargs):
+    return _build_fusion_samples(
+        [dict(row, namespace=row.get("namespace", "synthetic_fixture")) for row in sensor_records],
+        [dict(row, namespace=row.get("namespace", "synthetic_fixture")) for row in text_records],
+        missing_log_policy=kwargs.pop("missing_log_policy", "zero_vector"),
+        multiple_log_policy=kwargs.pop("multiple_log_policy", "mean_sorted_log_id"),
+        **kwargs,
+    )
 
 
 def test_missing_text_keeps_sensor_window():

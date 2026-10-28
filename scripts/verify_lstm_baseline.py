@@ -18,7 +18,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from models.lstm_baseline import LSTMBaseline, count_parameters
 from preprocessing.cmapss_fd001 import CANONICAL_COLUMNS
-from training.dataset import BaselineDataConfig, prepare_baseline_data
 
 
 REQUIRED_DATA_FILES = [
@@ -50,13 +49,7 @@ def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def ensure_baseline_data(data_dir: Path) -> None:
-    if not all((data_dir / name).exists() for name in REQUIRED_DATA_FILES):
-        prepare_baseline_data(BaselineDataConfig(output_dir=data_dir))
-
-
 def verify_data_artifacts(data_dir: Path) -> dict[str, object]:
-    ensure_baseline_data(data_dir)
     missing = [name for name in REQUIRED_DATA_FILES if not (data_dir / name).exists()]
     if missing:
         raise FileNotFoundError(f"Missing baseline data artifacts: {missing}")
@@ -128,10 +121,13 @@ def verify_trained_artifacts(
     metrics_dir: Path,
     embeddings_dir: Path,
 ) -> dict[str, object]:
-    checks = verify_data_artifacts(data_dir)
     missing = [name for name in REQUIRED_TRAINED_FILES if not (model_dir / name).exists()]
     if missing:
-        raise FileNotFoundError(f"Missing trained model artifacts: {missing}")
+        raise FileNotFoundError(
+            "Missing trained baseline artifacts; verifier is read-only and will "
+            f"not regenerate protected files: {missing}"
+        )
+    checks = verify_data_artifacts(data_dir)
 
     history = pd.read_csv(metrics_dir / "training_history.csv")
     validation_metrics = load_json(metrics_dir / "validation_metrics.json")
@@ -179,7 +175,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-dir", default="artifacts/models/fd001_lstm_baseline")
     parser.add_argument("--metrics-dir", default="artifacts/metrics/fd001_lstm_baseline")
     parser.add_argument("--embeddings-dir", default="artifacts/embeddings/fd001_lstm_baseline")
-    parser.add_argument("--pretrain", action="store_true", help="Verify only structural data setup before training.")
+    parser.add_argument("--pretrain", action="store_true", help="Verify existing data artifacts only; never create them.")
     return parser.parse_args()
 
 

@@ -1,0 +1,33 @@
+# Multimodal Fusion Decision Register
+
+**Purpose:** Compact register of decisions that block genuine fusion use. Every
+item remains **PENDING** until an authorized owner records approval and the
+required evidence is attached. Fixture tests are not approval evidence.
+
+| Decision | Current proposal / safe behavior | Status | Evidence required | Approver(s) | Code after approval |
+|---|---|---|---|---|---|
+| Genuine paired dataset ownership and permissions | No genuine paired dataset is approved or present. Genuine use fails closed without affirmative permission and dataset approval. | PENDING | Named owner, written access/use permission, retention/redaction terms, dataset version and auditable paired records. | Dataset owner; privacy/data-governance; project lead | Add approved dataset manifest/source adapter; preserve access and lineage controls. |
+| Authoritative equipment IDs and mapping | Candidate key remains `(unit_id, cycle)`. No ID translation is inferred or fabricated. | PENDING | Authoritative IDs, mapping provenance, collision audit and validation against genuine source records. | Sensor-data owner; technician-data owner; data-governance | Add explicit mapping artifact and collision checks if mapping is required. |
+| Cycle semantics | Sensor cycle means `label_cycle` / window end; equivalence with technician cycle is unvalidated. | PENDING | Source definitions and reviewed paired examples establishing cycle conversion and boundary behavior. | Sensor-data owner; technician-data owner | Add approved conversion/validation and boundary tests if required. |
+| Point-in-time availability, timezone and late arrivals | **IMPLEMENTED:** preserve distinct timestamps; parse timezone-aware values; resolve cutoffs per window; require explicit inclusivity and exclude/reject behavior. Missing availability fails closed. **PENDING:** genuine timestamp source and policy evidence. | PENDING | Authoritative availability timestamp source, timezone/clock evidence, cutoff inclusivity and late-arrival decision, plus genuine examples. | Technician-system owner; platform owner; evaluation lead | Supply approved genuine source fields and policy; no timestamp substitution is inferred. |
+| Prediction cutoff and operational RUL horizon | Per-window cutoff support is **IMPLEMENTED**. A positive horizon and explicit unit are required in the approved run configuration; no production value is selected. | PENDING | Operational decision definition, prediction timing, approved cycle/time horizon, and explicit target/horizon approval. | Maintenance/operations owner; model owner; baseline owner | Enter the owner-approved horizon; do not alter frozen baseline label generation. |
+| RUL target formula and cap | Consume the frozen baseline label unchanged: `max_cycle(unit) - cycle`, uncapped, in cycles. Fusion validates the supplied label against the sensor artifact's per-unit cycle maximum but never replaces or caps it. | PENDING | Baseline label-generation evidence and explicit confirmation that the uncapped target fits the approved operational horizon. | Baseline owner; model/evaluation owner | Keep baseline artifacts immutable; any separately approved target transformation must remain fusion-only. |
+| Missing/multiple-log behavior and `has_log` model feature | **PROPOSED / PROVISIONAL:** retain sensor row, use zero 768-D text vector and `has_log=False`; apply cutoff, sort by `log_id`, mean-aggregate eligible embeddings, and retain individual provenance. Model requires explicit `has_log` inclusion/exclusion. | PENDING | Reviewed missingness semantics, aggregation rationale, duplicate policy, and explicit model-feature decision. | Data-contract owner; NLP owner; model owner; operations | Keep policy explicit in the approved versioned manifest; no code default constitutes approval. |
+| Split and final evaluation protocol | **IMPLEMENTED:** deterministic namespace-marked, hashed equipment manifests reject leakage across every split pair and can enforce complete expected-ID coverage. **PENDING:** no genuine composition or final test assignment is approved. | PENDING | Owner-approved genuine equipment assignments, leakage audit, metric/selection protocol, sealed held-out set, and separate training/final-evaluation authorization. | Dataset owner; baseline owner; evaluation lead; project lead | Record the approved manifest and evidence; do not infer final test composition. |
+| Sensor embedding index authority and artifact lineage | **IMPLEMENTED:** `embedding_index` is only an artifact-local lookup emitted by the non-shuffled baseline embedding writer; loader validates uniqueness, bounds, and coverage. Existing checked-in metadata lacks explicit namespace and required source/artifact lineage, so genuine loading is **BLOCKED**. | BLOCKED | Owner-confirmed artifact schema/version and checkpoint lineage; authentic source IDs and metadata. | Baseline owner; sensor-data owner | Supply authoritative metadata/artifact; never use array position or index for cross-modal joins. |
+| Genuine fusion training authorization | No training authorization is recorded. The training harness requires an evidence-referenced `fusion_training_authorization` entry in addition to data approvals. | PENDING | Explicit written authorization linked to the approved dataset, run configuration, and training protocol. | Project lead; dataset owner; evaluation lead | Record and validate the authorization; no authorization is inferred from configuration defaults. |
+| Final held-out evaluation authorization | No final held-out evaluation authorization is recorded. It is separate from training authorization and required after model selection. | PENDING | Written approval, frozen selected model/configuration, sealed held-out equipment/labels, and approved evaluation report plan. | Project lead; evaluation lead; dataset owner | Require a separate evidence-referenced `final_held_out_evaluation_authorization` before evaluation code is enabled. |
+
+## Fail-closed implementation gates
+
+Genuine inputs require all decisions in the runtime approval register, a
+permissioned paired dataset, named source IDs, an approved point-in-time policy
+and cutoff, explicit missing/multiple-log choices, and embedding/data-schema
+provenance. A CLI switch or fixture pass does not constitute team approval.
+
+**NO-GO:** Do not begin genuine fusion training or performance evaluation until
+all applicable decisions above are approved and their evidence is validated.
+Final held-out evaluation additionally requires a frozen selected model and
+separate written authorization. The synthetic fixture validates software
+interfaces and provenance behavior only; it does not establish genuine pairing
+or predictive performance.
