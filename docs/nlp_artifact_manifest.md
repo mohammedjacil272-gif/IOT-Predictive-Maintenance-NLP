@@ -1,4 +1,5 @@
-﻿# NLP Artifact Manifest
+
+# NLP Artifact Manifest
 
 **Owner:** Rafaz
 **Status:** Synthetic fixture validation only
@@ -44,22 +45,47 @@ Previously reported pipeline output:
 
 These results apply only to the synthetic fixture.
 
-## 6. Provenance and limitations
+## 6. Automated alignment verification
+
+Verifier: `scripts/verify_nlp.py`
+
+Automated tests: `tests/test_nlp_alignment.py`
+
+The verifier checks:
+
+- Non-empty and unique log IDs.
+- Tensor dimensionality and finite embedding values.
+- Tensor, metadata and processed-log row counts.
+- Sequential embedding row indexes.
+- Exact embedding metadata and processed-log ID ordering.
+- Matching unit IDs, cycles and source splits.
+- Embedding model, token length, pooling and dimension metadata.
+- Synthetic fixture classification.
+- Verification report consistency.
+
+Latest user-reported test results:
+
+- NLP alignment tests: 11 passed.
+- Full test suite: 19 passed.
+- No test failures in the latest reported run.
+
+These tests validate synthetic artifact structure and alignment only. They do not establish genuine sensor-technician pairing or fusion readiness.
+
+## 7. Provenance and limitations
 
 - Dataset classification: synthetic_fixture.
 - No genuine paired technician-sensor dataset is established.
 - Embedding metadata contains row_index and log_id for row mapping.
 - Exact immutable model and tokenizer revisions are not recorded.
-- Comprehensive embedding-to-metadata alignment verification remains outstanding.
 - No predictive improvement or genuine-data performance claim is supported.
 
-## 7. Baseline protection
+## 8. Baseline protection
 
 All NLP outputs remain in fixture-specific directories.
 
 Do not overwrite frozen sensor-only FD001 baseline artifacts, checkpoints, preprocessing or evaluation results.
 
-## 8. Integration status
+## 9. Integration status
 
 **Status: SYNTHETIC-ONLY**
 

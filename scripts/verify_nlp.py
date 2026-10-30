@@ -1,5 +1,5 @@
-
-"""Verify generated NLP artifacts without modifying the sensor baseline."""
+﻿
+"""Verify synthetic NLP artifacts and embedding-to-log alignment."""
 
 import csv
 import json
@@ -11,58 +11,169 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "artifacts" / "data" / "fd001_nlp_fixture"
 EMBED_DIR = ROOT / "artifacts" / "embeddings" / "fd001_nlp_fixture"
 
+EXPECTED_DIM = 768
+EXPECTED_MODEL = "distilbert-base-uncased"
+EXPECTED_MAX_LENGTH = 128
+EXPECTED_POOLING = "attention-mask mean pooling"
 
-def check(condition, message):
+
+def require(condition, message):
     if not condition:
         raise AssertionError(message)
-    print(f"PASS: {message}")
 
 
 def read_csv(path):
-    check(path.exists(), f"File exists: {path.name}")
+    require(path.exists(), f"File does not exist: {path.name}")
+
     with path.open("r", encoding="utf-8-sig", newline="") as file:
-        return list(csv.DictReader(file))
+        reader = csv.DictReader(file)
+        require(reader.fieldnames is not None, f"{path.name} has no header")
+        return list(reader)
+
+
+def validate_unique_ids(rows, source_name):
+    ids = [str(row.get("log_id") or "").strip() for row in rows]
+
+    require(
+        all(ids),
+        f"{source_name}: log_id values must be non-empty",
+    )
+    require(
+        len(ids) == len(set(ids)),
+        f"{source_name}: duplicate log_id values found",
+    )
+
+    return ids
+
+
+def validate_alignment(processed, metadata, tensor):
+    """Validate embedding rows against their processed-log metadata."""
+
+    require(bool(processed), "Processed logs are empty")
+    require(bool(metadata), "Embedding metadata is empty")
+    require(isinstance(tensor, torch.Tensor), "Embedding file is not a tensor")
+    require(tensor.ndim == 2, "Embedding tensor must be two-dimensional")
+    require(tensor.shape[1] == EXPECTED_DIM, "Embedding dimension must be 768")
+    require(bool(torch.isfinite(tensor).all()), "Embeddings contain non-finite values")
+
+    tensor_rows = tensor.shape[0]
+
+    require(
+        tensor_rows == len(metadata),
+        "Tensor row count does not match metadata row count",
+    )
+    require(
+        len(metadata) == len(processed),
+        "Metadata row count does not match processed-log row count",
+    )
+
+    processed_ids = validate_unique_ids(processed, "Processed logs")
+    metadata_ids = validate_unique_ids(metadata, "Embedding metadata")
+
+    row_indices = []
+    for row in metadata:
+        try:
+            row_indices.append(int(row["row_index"]))
+        except (KeyError, TypeError, ValueError):
+            raise AssertionError("Invalid or missing row_index") from None
+
+    require(
+        row_indices == list(range(tensor_rows)),
+        "Metadata row indexes must be sequential from zero",
+    )
+
+    require(
+        metadata_ids == processed_ids,
+        "Embedding metadata log_id order does not match processed logs",
+    )
+
+    for index, (meta, log) in enumerate(zip(metadata, processed)):
+        for field in ("unit_id", "cycle", "source_split"):
+            require(
+                meta.get(field, "") == log.get(field, ""),
+                f"Row {index}: {field} does not match processed log",
+            )
+
+    for index, row in enumerate(metadata):
+        try:
+            max_length = int(row.get("max_length", ""))
+            embedding_dim = int(row.get("embedding_dim", ""))
+        except (TypeError, ValueError):
+            raise AssertionError(
+                f"Row {index}: invalid embedding configuration values"
+            ) from None
+
+        require(
+            row.get("model_name") == EXPECTED_MODEL,
+            f"Row {index}: unexpected embedding model",
+        )
+        require(
+            max_length == EXPECTED_MAX_LENGTH,
+            f"Row {index}: unexpected maximum token length",
+        )
+        require(
+            row.get("pooling") == EXPECTED_POOLING,
+            f"Row {index}: unexpected pooling configuration",
+        )
+        require(
+            embedding_dim == EXPECTED_DIM,
+            f"Row {index}: unexpected metadata embedding dimension",
+        )
+
+    require(
+        all(row.get("source_split") == "fixture" for row in processed),
+        "Processed records must all be labelled fixture",
+    )
 
 
 def main():
-    print("Verifying synthetic NLP artifacts...\n")
+    print("Verifying synthetic NLP artifacts and alignment...\n")
 
-    # Discover the CSV outputs created by the pipeline.
-    data_csvs = list(DATA_DIR.glob("*.csv"))
-    check(bool(data_csvs), "At least one data CSV exists")
+    processed = read_csv(DATA_DIR / "processed_logs.csv")
+    metadata = read_csv(EMBED_DIR / "embedding_metadata.csv")
 
-    for path in data_csvs:
-        rows = read_csv(path)
-        print(f"  {path.name}: {len(rows)} rows")
+    tensor_path = EMBED_DIR / "embeddings.pt"
+    require(tensor_path.exists(), "Embedding tensor does not exist")
 
-    # Check saved embedding tensors.
-    tensor_files = list(EMBED_DIR.glob("*.pt"))
-    check(bool(tensor_files), "At least one embedding tensor exists")
+    tensor = torch.load(
+        tensor_path,
+        map_location="cpu",
+        weights_only=True,
+    )
 
-    for path in tensor_files:
-        tensor = torch.load(path, map_location="cpu", weights_only=True)
-        check(
-            isinstance(tensor, torch.Tensor),
-            f"{path.name} contains a tensor",
-        )
-        check(
-            tensor.ndim == 2 and tensor.shape[1] == 768,
-            f"{path.name} has 768-dimensional embeddings",
-        )
-        check(
-            bool(torch.isfinite(tensor).all()),
-            f"{path.name} contains only finite values",
-        )
-        print(f"  {path.name}: shape={tuple(tensor.shape)}")
+    validate_alignment(processed, metadata, tensor)
 
-    # Check JSON metadata if the pipeline generated any.
-    json_files = list(EMBED_DIR.glob("*.json"))
-    for path in json_files:
-        with path.open("r", encoding="utf-8-sig") as file:
-            json.load(file)
-        print(f"PASS: {path.name} contains valid JSON")
+    report_path = DATA_DIR / "verification_report.json"
+    require(report_path.exists(), "Verification report does not exist")
 
-    print("\nVerification completed successfully.")
+    with report_path.open("r", encoding="utf-8-sig") as file:
+        report = json.load(file)
+
+    require(
+        report.get("dataset_type") == "synthetic_fixture",
+        "Report does not identify synthetic fixture data",
+    )
+    require(
+        report.get("number_of_logs") == len(processed),
+        "Report log count does not match",
+    )
+    require(
+        report.get("embedding_shape") == list(tensor.shape),
+        "Report embedding shape does not match",
+    )
+    require(
+        report.get("official_test_evaluation_performed") is False,
+        "Report must confirm that official test evaluation was not performed",
+    )
+
+    print("PASS: embedding-to-log alignment")
+    print("PASS: metadata and embedding configuration")
+    print("PASS: synthetic-only classification")
+    print("PASS: verification report")
+    print("\nAll synthetic NLP alignment checks passed.")
+    print(f"Verified logs: {len(processed)}")
+    print(f"Embedding shape: {tuple(tensor.shape)}")
+    print("Dataset classification: SYNTHETIC-ONLY")
 
 
 if __name__ == "__main__":
