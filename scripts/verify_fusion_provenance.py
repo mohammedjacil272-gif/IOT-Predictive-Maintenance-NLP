@@ -429,6 +429,56 @@ def main():
             "Entity records were not preserved."
         )
 
+    # Verify that each log's entities remain in its correct fusion window.
+    expected_entities_by_log = {
+        "L001": 5,
+        "L002": 3,
+        "L003": 3,
+        "L004": 1,
+        "L005": 4,
+    }
+
+    observed_entities_by_log = {}
+
+    for window_log_ids, window_entities in zip(
+        result["log_ids_by_window"],
+        result["entities_by_window"],
+    ):
+        window_counts = {}
+
+        for entity in window_entities:
+            log_id = entity.get("log_id")
+
+            if log_id is None:
+                raise AssertionError(
+                    "A preserved entity is missing its log_id."
+                )
+
+            window_counts[log_id] = window_counts.get(log_id, 0) + 1
+
+        if set(window_counts) != set(window_log_ids):
+            raise AssertionError(
+                "Entity log IDs do not match their fusion window log IDs."
+            )
+
+        for log_id in window_log_ids:
+            if log_id in observed_entities_by_log:
+                raise AssertionError(
+                    f"Log {log_id} appears in multiple fusion windows."
+                )
+
+            observed_entities_by_log[log_id] = window_counts.get(log_id, 0)
+
+    if observed_entities_by_log != expected_entities_by_log:
+        raise AssertionError(
+            f"Per-log entity counts mismatch. "
+            f"Expected: {expected_entities_by_log}; "
+            f"observed: {observed_entities_by_log}"
+        )
+
+    print("PASS: Exact entity counts preserved in each fusion window")
+    
+
     if sum(
         len(items) for items in result["severity_by_log_by_window"]
     ) != 5:
