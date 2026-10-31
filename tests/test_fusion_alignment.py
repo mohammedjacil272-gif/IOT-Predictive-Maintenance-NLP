@@ -128,6 +128,71 @@ def test_multiple_logs_are_aggregated_deterministically():
     assert result["log_ids_by_window"] == [["log-a", "log-b"]]
 
 
+def test_multiple_logs_preserve_entity_ownership_and_window_provenance():
+    first = log("log-b", 1, 10, 6)
+    first.update({
+        "entities": [{"log_id": "log-b", "entity_text": "fan", "label": "COMPONENT"}],
+        "severity_score": 3,
+        "severity_label": "high",
+    })
+    second = log("log-a", 1, 10, 2)
+    second.update({
+        "entities": [{"log_id": "log-a", "entity_text": "bearing", "label": "COMPONENT"}],
+        "severity_score": 1,
+        "severity_label": "low",
+    })
+    other_window = log("log-c", 1, 11, 9, split="train")
+    other_window.update({
+        "entities": [{"log_id": "log-c", "entity_text": "shaft", "label": "COMPONENT"}],
+        "severity_score": 2,
+        "severity_label": "medium",
+    })
+
+    result = build_fusion_samples(
+        [sensor(1, 10), sensor(1, 11)], [first, second, other_window]
+    )
+
+    assert result["log_ids_by_window"] == [["log-a", "log-b"], ["log-c"]]
+    assert torch.all(result["text_embeddings"][0] == 4)
+    assert result["split"] == ("train", "train")
+    assert result["window_severity"] == [3.0, 2.0]
+    assert [item["severity_label"] for item in result["severity_by_log_by_window"][0]] == [
+        "low", "high"
+    ]
+    entities_by_window = result["entities_by_window"]
+    first_window_entities = entities_by_window[0]
+    assert len(first_window_entities) == 2
+    assert any(
+        entity["log_id"] == "log-a" and entity["entity_text"] == "bearing"
+        for entity in first_window_entities
+    )
+    assert any(
+        entity["log_id"] == "log-b" and entity["entity_text"] == "fan"
+        for entity in first_window_entities
+    )
+    assert [entity["log_id"] for entity in first_window_entities] == [
+        "log-a", "log-b"
+    ]
+    assert [(item["log_id"], item["entity_text"]) for item in entities_by_window[1]] == [
+        ("log-c", "shaft")
+    ]
+    assert all(item["unit_id"] == 1 and item["cycle"] == 10 for item in entities_by_window[0])
+    assert all(item["split"] == "train" for window in entities_by_window for item in window)
+
+
+def test_duplicate_or_unknown_log_entity_references_are_rejected():
+    repeated = log("same-log", 1, 10, 1)
+    with pytest.raises(ValueError, match="Duplicate log_id"):
+        build_fusion_samples(
+            [sensor(1, 10)], [repeated, dict(repeated)]
+        )
+
+    unknown_entity = log("known-log", 1, 10, 1)
+    unknown_entity["entities"] = [{"log_id": "unknown-log", "label": "FAULT"}]
+    with pytest.raises(ValueError, match="Entity provenance mismatch.*log_id"):
+        build_fusion_samples([sensor(1, 10)], [unknown_entity])
+
+
 def test_namespace_mismatch_rejected():
     sensor_row = dict(sensor(1, 1), namespace="synthetic_fixture")
     text_row = dict(log("x", 1, 1, 2), namespace="genuine")
