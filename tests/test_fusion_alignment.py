@@ -97,6 +97,50 @@ def test_entity_provenance_mismatch_rejected():
         build_fusion_samples([sensor(1, 1)], [text])
 
 
+@pytest.mark.parametrize("invalid_log_id", [None, "", "   ", 123])
+def test_missing_or_invalid_entity_log_id_rejected(invalid_log_id):
+    text = log("parent-log", 1, 1, 2)
+    text["entities"] = [{"log_id": invalid_log_id, "label": "SYMPTOM"}]
+
+    with pytest.raises(
+        ValueError,
+        match="Entity for log parent-log is missing a valid log_id",
+    ):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
+def test_entity_without_log_id_rejected():
+    text = log("parent-log", 1, 1, 2)
+    text["entities"] = [{"label": "SYMPTOM"}]
+
+    with pytest.raises(
+        ValueError,
+        match="Entity for log parent-log is missing a valid log_id",
+    ):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
+def test_entity_with_unknown_log_id_rejected():
+    text = log("parent-log", 1, 1, 2)
+    text["entities"] = [{"log_id": "unknown-log", "label": "SYMPTOM"}]
+
+    with pytest.raises(ValueError, match="Entity provenance mismatch.*log_id"):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
+def test_explicit_entity_log_ownership_is_preserved():
+    text = log("parent-log", 1, 1, 2)
+    text["entities"] = [{"log_id": "parent-log", "label": "SYMPTOM"}]
+
+    result = build_fusion_samples([sensor(1, 1)], [text])
+
+    entity = result["entities_by_window"][0][0]
+    assert entity["log_id"] == "parent-log"
+    assert entity["unit_id"] == 1
+    assert entity["cycle"] == 1
+    assert entity["split"] == "train"
+
+
 def test_fusion_uses_supplied_uncapped_baseline_rul_label():
     record = sensor(1, 30)
     record["rul"] = 0.0  # Baseline label at its maximum-cycle window.
@@ -230,13 +274,21 @@ def test_provenance_and_window_severity_are_preserved():
         [
             {
                 **log("log_b", 1, 10, 4.0),
-                "entities": [{"entity_text": "overheating", "label": "SYMPTOM"}],
+                "entities": [{
+    "log_id": "log_b",
+    "entity_text": "overheating",
+    "label": "SYMPTOM",
+}],
                 "severity_score": 4,
                 "severity_label": "high",
             },
             {
                 **log("log_a", 1, 10, 2.0),
-                "entities": [{"entity_text": "bearing", "label": "COMPONENT"}],
+                "entities": [{
+    "log_id": "log_a",
+    "entity_text": "bearing",
+    "label": "COMPONENT",
+}],
                 "severity_score": 2,
                 "severity_label": "medium",
             },
