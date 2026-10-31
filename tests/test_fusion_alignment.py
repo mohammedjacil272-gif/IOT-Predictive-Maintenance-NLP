@@ -90,11 +90,72 @@ def test_required_alignment_provenance_is_validated():
         build_fusion_samples([sensor(1, 1)], [text])
 
 
+@pytest.mark.parametrize("field", ["log_id", "unit_id", "cycle", "split"])
+def test_missing_required_log_ownership_fields_are_rejected(field):
+    text = log("owned-log", 1, 1, 2)
+    del text[field]
+    with pytest.raises(ValueError, match=f"Text record is missing fields.*{field}"):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("unit_id", 0, "Text unit_id must be a positive integer"),
+        ("unit_id", "1", "Text unit_id must be a positive integer"),
+        ("cycle", 0, "Text cycle must be a positive integer"),
+        ("cycle", "1", "Text cycle must be a positive integer"),
+    ],
+)
+def test_invalid_log_alignment_metadata_is_rejected(field, value, message):
+    text = log("invalid-alignment", 1, 1, 2)
+    text[field] = value
+    with pytest.raises(ValueError, match=message):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
+def test_missing_entity_log_id_is_rejected():
+    text = log("parent-log", 1, 1, 2)
+    text["entities"] = [{"entity_text": "bearing", "label": "COMPONENT"}]
+
+    with pytest.raises(ValueError, match="Entity for log parent-log is missing a valid log_id"):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
 def test_entity_provenance_mismatch_rejected():
-    text = log("log-1", 1, 1, 2)
-    text["entities"] = [{"log_id": "different-log", "label": "SYMPTOM"}]
+    first = log("log-1", 1, 1, 2)
+    first["entities"] = [{"log_id": "log-2", "label": "SYMPTOM"}]
+    second = log("log-2", 1, 2, 3)
+    with pytest.raises(ValueError, match="Entity provenance mismatch.*log_id"):
+        build_fusion_samples([sensor(1, 1), sensor(1, 2)], [first, second])
+
+
+def test_unknown_entity_log_id_is_rejected():
+    text = log("known-log", 1, 1, 2)
+    text["entities"] = [{"log_id": "unknown-log", "label": "FAULT"}]
+
     with pytest.raises(ValueError, match="Entity provenance mismatch.*log_id"):
         build_fusion_samples([sensor(1, 1)], [text])
+
+
+def test_explicit_entity_ownership_is_accepted_and_preserved():
+    text = log("owned-log", 1, 1, 2)
+    text["entities"] = [{
+        "log_id": "owned-log",
+        "entity_text": "bearing",
+        "label": "COMPONENT",
+    }]
+
+    result = build_fusion_samples([sensor(1, 1)], [text])
+
+    assert result["entities_by_window"][0] == [{
+        "log_id": "owned-log",
+        "entity_text": "bearing",
+        "label": "COMPONENT",
+        "unit_id": 1,
+        "cycle": 1,
+        "split": "train",
+    }]
 
 
 def test_fusion_uses_supplied_uncapped_baseline_rul_label():
@@ -295,13 +356,13 @@ def test_provenance_and_window_severity_are_preserved():
         [
             {
                 **log("log_b", 1, 10, 4.0),
-                "entities": [{"entity_text": "overheating", "label": "SYMPTOM"}],
+                "entities": [{"log_id": "log_b", "entity_text": "overheating", "label": "SYMPTOM"}],
                 "severity_score": 4,
                 "severity_label": "high",
             },
             {
                 **log("log_a", 1, 10, 2.0),
-                "entities": [{"entity_text": "bearing", "label": "COMPONENT"}],
+                "entities": [{"log_id": "log_a", "entity_text": "bearing", "label": "COMPONENT"}],
                 "severity_score": 2,
                 "severity_label": "medium",
             },
