@@ -18,7 +18,7 @@ def main():
     dataset = TensorDataset(sensor, text, targets)
     loader = DataLoader(dataset, batch_size=8, shuffle=False)
 
-    model = MultimodalFusionModel()
+    model = MultimodalFusionModel(use_has_log=False)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = torch.nn.MSELoss()
 
