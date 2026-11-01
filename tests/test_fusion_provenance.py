@@ -1,8 +1,10 @@
 from datetime import datetime
+from hashlib import sha256
+from pathlib import Path
 
 import pytest
 
-from training.fusion_dataset import build_fusion_samples
+from training.fusion_dataset import build_fusion_samples as _build_fusion_samples, embedding_digest
 from training.fusion_provenance import (
     FINAL_EVALUATION_AUTHORIZATION,
     GENUINE_APPROVALS,
@@ -16,11 +18,21 @@ from training.fusion_provenance import (
 )
 from training.fusion_splits import canonical_manifest
 
-TEST_ARTIFACT_SHA256 = "0" * 64
+TEST_ARTIFACT_SHA256 = sha256(Path(__file__).read_bytes()).hexdigest()
 
 
-def approved():
-    return {
+def build_fusion_samples(*args, **kwargs):
+    kwargs.setdefault("has_log_feature", "exclude")
+    return _build_fusion_samples(*args, **kwargs)
+
+
+def approved(prediction_cutoff=None):
+    artifact_path = str(Path(__file__).resolve())
+    artifact_hash = sha256(Path(__file__).read_bytes()).hexdigest()
+    manifest_id = "synthetic-test-manifest-v1"
+    sensor_embedding_hash = embedding_digest([0.0] * 64)
+    text_embedding_hash = embedding_digest([0.0] * 768)
+    approval = {
         "approval_register_id": "synthetic-test-register",
         "approvals": {
             field: {
@@ -30,7 +42,58 @@ def approved():
             }
             for field in GENUINE_APPROVALS
         },
+        "fusion_policies": {
+            "missing_log": "zero_vector",
+            "multiple_logs": "mean_sorted_log_id",
+        },
+        "prediction_cutoff": prediction_cutoff or window_cutoffs(),
+        "has_log_feature": "exclude",
+        "artifact_path": artifact_path,
+        "artifact_sha256": artifact_hash,
+        "approved_manifest": {
+            "manifest_id": manifest_id,
+            "equipment_mapping_id": "synthetic-test-mapping",
+            "datasets": {
+                "sensor": {
+                    "source_dataset": "synthetic-test-dataset",
+                    "source_dataset_version": "fixture-v1",
+                    "preprocessing_version": "synthetic-test-preprocess-v1",
+                },
+                "text": {
+                    "source_dataset": "synthetic-test-log-dataset",
+                    "source_dataset_version": "fixture-v1",
+                    "preprocessing_version": "synthetic-test-nlp-preprocess-v1",
+                },
+            },
+            "record_scope": {"sensor": {"scope_type": "dataset"}, "text": {"scope_type": "dataset"}},
+            "artifacts": {
+                "synthetic-sensor-artifact": {
+                    "artifact_id": "synthetic-sensor-artifact",
+                    "artifact_sha256": artifact_hash,
+                    "artifact_path": artifact_path,
+                    "modality": "sensor",
+                    "embedding_model": "synthetic-sensor-model",
+                    "embedding_revision": "fixture-v1",
+                    "embedding_sha256_by_source_record_id": {"synthetic-sensor-row-17-9": sensor_embedding_hash},
+                },
+                "synthetic-text-artifact": {
+                    "artifact_id": "synthetic-text-artifact",
+                    "artifact_sha256": artifact_hash,
+                    "artifact_path": artifact_path,
+                    "modality": "text",
+                    "embedding_model": "synthetic-text-model",
+                    "embedding_revision": "fixture-v1",
+                    "embedding_sha256_by_source_record_id": {
+                        "source-a": text_embedding_hash,
+                        "source-b": embedding_digest([2.0] * 768),
+                        "source-c": embedding_digest([100.0] * 768),
+                    },
+                },
+            },
+        },
     }
+    approval["approvals"]["embedding_provenance"]["manifest_id"] = manifest_id
+    return approval
 
 
 def time_policy(**overrides):
@@ -69,8 +132,11 @@ def genuine_rows():
         "preprocessing_version": "synthetic-test-preprocess-v1",
         "artifact_id": "synthetic-sensor-artifact",
         "artifact_sha256": TEST_ARTIFACT_SHA256,
+        "artifact_path": str(Path(__file__).resolve()),
         "embedding_model": "synthetic-sensor-model",
         "embedding_revision": "fixture-v1",
+        "embedding_sha256": embedding_digest([0.0] * 64),
+        **timestamps(),
     }
     log = {
         "log_id": "record-a",
@@ -86,9 +152,11 @@ def genuine_rows():
         "equipment_mapping_id": "synthetic-test-mapping",
         "preprocessing_version": "synthetic-test-nlp-preprocess-v1",
         "artifact_id": "synthetic-text-artifact",
-        "artifact_sha256": TEST_ARTIFACT_SHA256,
+        "artifact_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+        "artifact_path": str(Path(__file__).resolve()),
         "embedding_model": "synthetic-text-model",
         "embedding_revision": "fixture-v1",
+        "embedding_sha256": embedding_digest([0.0] * 768),
         **timestamps(),
     }
     return [sensor], [log]
@@ -127,12 +195,45 @@ def test_genuine_records_require_all_approvals_and_timestamp_policy():
     assert result["rul"].tolist() == [55.0]
 
 
+@pytest.mark.parametrize("modality", ["sensor", "text"])
+def test_genuine_caller_embedding_substitution_is_rejected(modality):
+    sensor, logs = genuine_rows()
+    if modality == "sensor":
+        sensor[0]["sensor_embedding"] = [999.0] * 64
+    else:
+        logs[0]["text_embedding"] = [999.0] * 768
+    with pytest.raises(ValueError, match="embedding digest|approved artifact record"):
+        build_fusion_samples(
+            sensor,
+            logs,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+            genuine_approval=approved(),
+            point_in_time_policy=time_policy(),
+            prediction_cutoff=window_cutoffs(),
+        )
 def test_genuine_records_fail_closed_without_artifact_provenance():
     sensor, logs = genuine_rows()
     del logs[0]["source_dataset_version"]
     with pytest.raises(ValueError, match="missing provenance"):
         build_fusion_samples(
             sensor, logs,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+            genuine_approval=approved(),
+            point_in_time_policy=time_policy(),
+            prediction_cutoff=window_cutoffs(),
+        )
+
+
+@pytest.mark.parametrize("field", TIMESTAMP_FIELDS)
+def test_genuine_sensor_requires_each_timestamp(field):
+    sensor, logs = genuine_rows()
+    sensor[0].pop(field)
+    with pytest.raises(ValueError, match=f"Missing or malformed {field}"):
+        build_fusion_samples(
+            sensor,
+            [],
             missing_log_policy="zero_vector",
             multiple_log_policy="mean_sorted_log_id",
             genuine_approval=approved(),
@@ -213,6 +314,9 @@ def test_availability_after_cutoff_can_be_explicitly_excluded():
 
 def test_availability_before_cutoff_is_eligible_and_timezone_is_normalized():
     values = timestamps()
+    values["event_time"] = "2025-02-01T07:00:00Z"
+    values["record_creation_time"] = "2025-02-01T08:00:00Z"
+    values["ingestion_time"] = "2025-02-01T09:00:00Z"
     values["availability_time"] = "2025-02-01T15:00:00+05:30"
     parsed = validate_point_in_time(
         values,
@@ -231,6 +335,145 @@ def test_missing_authoritative_availability_timestamp_is_rejected():
             values,
             cutoff="2025-02-01T11:00:00Z",
             policy=time_policy(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("earlier", "later"),
+    [
+        ("event_time", "record_creation_time"),
+        ("record_creation_time", "ingestion_time"),
+        ("ingestion_time", "availability_time"),
+    ],
+)
+def test_each_timestamp_ordering_violation_is_rejected(earlier, later):
+    values = timestamps()
+    values[earlier] = "2025-02-01T11:00:00Z"
+    values[later] = "2025-02-01T10:00:00Z"
+    with pytest.raises(ValueError, match="Timestamp ordering violation"):
+        validate_point_in_time(values, cutoff="2025-02-01T12:00:00Z", policy=time_policy())
+
+
+def test_genuine_artifact_hash_mismatch_is_rejected():
+    sensor, logs = genuine_rows()
+    sensor[0]["artifact_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="artifact_sha256|artifact hash"):
+        build_fusion_samples(
+            sensor,
+            logs,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+            genuine_approval=approved(),
+            point_in_time_policy=time_policy(),
+            prediction_cutoff=window_cutoffs(),
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"runtime": {"missing_log_policy": "error"}},
+        {"runtime": {"multiple_log_policy": "error"}},
+        {"runtime": {"prediction_cutoff": {(17, 9): "2025-02-01T11:00:00Z"}}},
+        {"runtime": {"has_log_feature": "include"}},
+    ],
+)
+def test_runtime_policy_must_match_approval(change):
+    sensor, logs = genuine_rows()
+    runtime = {
+        "missing_log_policy": "zero_vector",
+        "multiple_log_policy": "mean_sorted_log_id",
+        "prediction_cutoff": window_cutoffs(),
+        "has_log_feature": "exclude",
+    }
+    runtime.update(change["runtime"])
+    with pytest.raises(ValueError, match="do not match approval"):
+        build_fusion_samples(
+            sensor,
+            logs,
+            **runtime,
+            genuine_approval=approved(),
+            point_in_time_policy=time_policy(),
+        )
+
+
+def _temporary_manifest_case(tmp_path):
+    sensor, logs = genuine_rows()
+    sensor_path = tmp_path / "sensor.bin"
+    text_path = tmp_path / "text.bin"
+    sensor_path.write_bytes(b"approved sensor artifact")
+    text_path.write_bytes(b"approved text artifact")
+    sensor_hash = sha256(sensor_path.read_bytes()).hexdigest()
+    text_hash = sha256(text_path.read_bytes()).hexdigest()
+    sensor[0]["artifact_path"] = str(sensor_path)
+    sensor[0]["artifact_sha256"] = sensor_hash
+    logs[0]["artifact_path"] = str(text_path)
+    logs[0]["artifact_sha256"] = text_hash
+    approval = approved()
+    approval["approved_manifest"]["artifacts"]["synthetic-sensor-artifact"].update(
+        artifact_path=str(sensor_path), artifact_sha256=sensor_hash
+    )
+    approval["approved_manifest"]["artifacts"]["synthetic-text-artifact"].update(
+        artifact_path=str(text_path), artifact_sha256=text_hash
+    )
+    return sensor, logs, approval
+
+
+def test_real_temporary_artifacts_are_bound_to_the_approved_manifest(tmp_path):
+    sensor, logs, approval = _temporary_manifest_case(tmp_path)
+    result = build_fusion_samples(
+        sensor, logs,
+        missing_log_policy="zero_vector",
+        multiple_log_policy="mean_sorted_log_id",
+        genuine_approval=approval,
+        point_in_time_policy=time_policy(),
+        prediction_cutoff=window_cutoffs(),
+    )
+    assert result["namespace"] == "genuine"
+
+
+@pytest.mark.parametrize("mutation", [
+    "tamper_bytes", "wrong_digest", "artifact_id", "dataset_version",
+    "equipment_mapping", "preprocessing", "different_path", "missing_file",
+    "manifest_substitution", "unapproved_digest",
+])
+def test_manifest_bound_artifact_substitutions_fail_closed(tmp_path, mutation):
+    sensor, logs, approval = _temporary_manifest_case(tmp_path)
+    manifest = approval["approved_manifest"]
+    if mutation == "tamper_bytes":
+        Path(sensor[0]["artifact_path"]).write_bytes(b"tampered")
+    elif mutation == "wrong_digest":
+        sensor[0]["artifact_sha256"] = "0" * 64
+    elif mutation == "artifact_id":
+        sensor[0]["artifact_id"] = "not-approved"
+    elif mutation == "dataset_version":
+        sensor[0]["source_dataset_version"] = "other-version"
+    elif mutation == "equipment_mapping":
+        sensor[0]["equipment_mapping_id"] = "other-mapping"
+    elif mutation == "preprocessing":
+        sensor[0]["preprocessing_version"] = "other-preprocess"
+    elif mutation == "different_path":
+        other = tmp_path / "other.bin"
+        other.write_bytes(b"approved other artifact")
+        sensor[0]["artifact_path"] = str(other)
+        sensor[0]["artifact_sha256"] = sha256(other.read_bytes()).hexdigest()
+    elif mutation == "missing_file":
+        sensor[0]["artifact_path"] = str(tmp_path / "missing.bin")
+    elif mutation == "manifest_substitution":
+        approval["approved_manifest"] = dict(manifest, manifest_id="substituted-manifest")
+    elif mutation == "unapproved_digest":
+        other = tmp_path / "other.bin"
+        other.write_bytes(b"unapproved dataset artifact")
+        sensor[0]["artifact_path"] = str(other)
+        sensor[0]["artifact_sha256"] = sha256(other.read_bytes()).hexdigest()
+    with pytest.raises(ValueError):
+        build_fusion_samples(
+            sensor, logs,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+            genuine_approval=approval,
+            point_in_time_policy=time_policy(),
+            prediction_cutoff=window_cutoffs(),
         )
 
 
@@ -263,7 +506,7 @@ def test_genuine_cutoff_is_resolved_per_prediction_window():
             sensor, logs,
             missing_log_policy="zero_vector",
             multiple_log_policy="mean_sorted_log_id",
-            genuine_approval=approved(),
+            genuine_approval=approved({(17, 9): "2025-02-01T11:00:00Z"}),
             point_in_time_policy=time_policy(),
             prediction_cutoff={},
         )
@@ -331,7 +574,7 @@ def test_late_log_is_excluded_but_sensor_window_is_retained():
         logs,
         missing_log_policy="zero_vector",
         multiple_log_policy="mean_sorted_log_id",
-        genuine_approval=approved(),
+        genuine_approval=approved({(17, 9): "2025-02-01T11:00:00Z"}),
         point_in_time_policy=time_policy(late_arrival_policy="exclude"),
         prediction_cutoff={(17, 9): "2025-02-01T11:00:00Z"},
     )
@@ -344,22 +587,29 @@ def test_cutoff_is_applied_before_deterministic_multiple_log_aggregation():
     first = dict(logs[0], log_id="log-b", source_record_id="source-b")
     first["availability_time"] = "2025-02-01T10:30:00Z"
     first["text_embedding"] = [2.0] * 768
+    first["embedding_sha256"] = embedding_digest(first["text_embedding"])
     second = dict(logs[0], log_id="log-a", source_record_id="source-a")
     second["availability_time"] = "2025-02-01T11:00:00Z"
     second["text_embedding"] = [4.0] * 768
+    second["embedding_sha256"] = embedding_digest(second["text_embedding"])
     late = dict(logs[0], log_id="log-c", source_record_id="source-c")
     late["availability_time"] = "2025-02-01T12:00:00Z"
     late["text_embedding"] = [100.0] * 768
+    late["embedding_sha256"] = embedding_digest(late["text_embedding"])
+    approval = approved({(17, 9): "2025-02-01T11:00:00Z"})
+    approval["approved_manifest"]["artifacts"]["synthetic-text-artifact"][
+        "embedding_sha256_by_source_record_id"
+    ]["source-a"] = embedding_digest(second["text_embedding"])
     result = build_fusion_samples(
         sensor,
         [first, second, late],
         missing_log_policy="zero_vector",
         multiple_log_policy="mean_sorted_log_id",
-        genuine_approval=approved(),
+        genuine_approval=approval,
         point_in_time_policy=time_policy(late_arrival_policy="exclude"),
         prediction_cutoff={(17, 9): "2025-02-01T11:00:00Z"},
     )
-    assert result["log_ids_by_window"] == [["log-a", "log-b"]]
+    assert [list(item) for item in result["log_ids_by_window"]] == [["log-a", "log-b"]]
     assert torch_all_equal(result["text_embeddings"][0], 3.0)
     assert [item["log_id"] for item in result["excluded_logs"]] == ["log-c"]
 

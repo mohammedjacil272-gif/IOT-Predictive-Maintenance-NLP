@@ -85,12 +85,23 @@ def embedding_diagnostics(cache_root: str | Path | None = None) -> dict[str, Any
         transformers_available = False
     root = Path(cache_root) if cache_root is not None else Path.home() / ".cache" / "huggingface" / "hub"
     model_markers = list(root.glob("**/*distilbert*")) if root.exists() else []
+    local_model_ready = False
+    diagnostic_error = None
+    if transformers_available and model_markers:
+        try:
+            from transformers import AutoModel, AutoTokenizer
+            AutoTokenizer.from_pretrained(MODEL_NAME, local_files_only=True)
+            AutoModel.from_pretrained(MODEL_NAME, local_files_only=True)
+            local_model_ready = True
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not download.
+            diagnostic_error = str(exc)
     return {
         "transformers_available": transformers_available,
         "model_name": MODEL_NAME,
         "local_cache_root": str(root),
         "local_model_markers_found": bool(model_markers),
-        "ready": bool(transformers_available and model_markers),
+        "ready": local_model_ready,
+        "diagnostic_error": diagnostic_error,
         "network_download_attempted": False,
         "classification": "optional NLP embedding dependency; not required for rule-based fixture tests",
     }

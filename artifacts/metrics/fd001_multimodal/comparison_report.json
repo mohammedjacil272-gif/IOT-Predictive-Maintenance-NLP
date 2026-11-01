@@ -1,0 +1,38 @@
+{
+  "dataset": "NASA C-MAPSS FD001",
+  "evaluation_split": "validation",
+  "official_test_evaluated": false,
+  "models": [
+    {
+      "model": "sensor_only_lstm",
+      "status": "measured_baseline",
+      "MAE": 20.884394122374314,
+      "RMSE": 31.364907230543583,
+      "MSE": 983.7574055806052,
+      "source": "artifacts\\metrics\\fd001_lstm_baseline\\validation_metrics.json"
+    },
+    {
+      "model": "nlp_only",
+      "status": "pending_real_nlp_artifacts",
+      "MAE": null,
+      "RMSE": null,
+      "MSE": null,
+      "source": null
+    },
+    {
+      "model": "multimodal_fusion",
+      "status": "pending_real_nlp_artifacts_and_training",
+      "MAE": null,
+      "RMSE": null,
+      "MSE": null,
+      "source": null
+    }
+  ],
+  "notes": [
+    "All metrics must use the same frozen validation engine split.",
+    "Lower MAE, RMSE, and MSE indicate better predictions.",
+    "Pending metrics are not zero and must not be treated as results.",
+    "Synthetic smoke-test metrics are excluded from this comparison.",
+    "Official test labels were not used for model selection."
+  ]
+}

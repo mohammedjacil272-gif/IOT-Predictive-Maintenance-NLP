@@ -20,9 +20,9 @@ class MultimodalFusionModel(nn.Module):
     ) -> None:
         super().__init__()
 
-        if use_has_log is None:
+        if not isinstance(use_has_log, bool):
             raise ValueError(
-                "Select use_has_log explicitly; production policy is pending approval."
+                "Select use_has_log explicitly as a boolean; production policy is pending approval."
             )
         if min(sensor_dim, text_dim, hidden_dim, head_dim) <= 0:
             raise ValueError("Embedding and hidden dimensions must be positive.")

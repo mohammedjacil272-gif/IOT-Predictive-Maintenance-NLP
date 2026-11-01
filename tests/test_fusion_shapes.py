@@ -79,3 +79,16 @@ def test_has_log_feature_selection_is_explicit():
     result = model(sensor, text, has_log=torch.tensor([True, False]))
     assert result.shape == (2,)
     assert torch.isfinite(result).all()
+
+
+@pytest.mark.parametrize("invalid", [None, 1, "false", object()])
+def test_has_log_policy_requires_a_boolean(invalid):
+    with pytest.raises(ValueError, match="explicitly as a boolean"):
+        MultimodalFusionModel(use_has_log=invalid)
+
+
+def test_fusion_verifier_is_forward_only():
+    source = __import__("pathlib").Path("scripts/verify_fusion.py").read_text()
+    assert "torch.optim" not in source
+    assert ".backward(" not in source
+    assert ".step(" not in source

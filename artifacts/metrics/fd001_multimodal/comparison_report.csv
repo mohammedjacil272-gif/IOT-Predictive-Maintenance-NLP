@@ -1,0 +1,4 @@
+model,status,MAE,RMSE,MSE,source
+sensor_only_lstm,measured_baseline,20.884394122374314,31.364907230543583,983.7574055806052,artifacts\metrics\fd001_lstm_baseline\validation_metrics.json
+nlp_only,pending_real_nlp_artifacts,,,,
+multimodal_fusion,pending_real_nlp_artifacts_and_training,,,,
