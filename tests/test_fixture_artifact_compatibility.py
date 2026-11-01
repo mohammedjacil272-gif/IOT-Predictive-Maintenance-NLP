@@ -89,14 +89,27 @@ def test_fixture_artifacts_compatible_with_fusion_interface():
 
         unit_id = int(meta["unit_id"])
         cycle = int(meta["cycle"])
+        for entity in entities_by_id[log_id]:
+            assert str(entity.get("unit_id", "")).strip() == str(unit_id)
+            assert str(entity.get("cycle", "")).strip() == str(cycle)
+            assert str(entity.get("source_split", "")).strip() == "fixture"
 
         text_records.append({
             "log_id": log_id,
             "unit_id": unit_id,
             "cycle": cycle,
             "split": "fixture",
+            "namespace": "synthetic_fixture",
             "text_embedding": tensor[int(meta["row_index"])],
-            "entities": entities_by_id[log_id],
+            "entities": [
+                {
+                    **entity,
+                    "unit_id": unit_id,
+                    "cycle": cycle,
+                    "split": "fixture",
+                }
+                for entity in entities_by_id[log_id]
+            ],
             "severity_score": float(severity["severity_score"]),
             "severity_label": severity["severity_label"],
             "matched_terms": json.loads(severity["matched_terms"]),
@@ -108,11 +121,17 @@ def test_fixture_artifacts_compatible_with_fusion_interface():
             "unit_id": unit_id,
             "cycle": cycle,
             "split": "fixture",
+            "namespace": "synthetic_fixture",
             "sensor_embedding": [0.0] * 64,
             "rul": 0.0,
         })
 
-    result = build_fusion_samples(sensor_records, text_records)
+    result = build_fusion_samples(
+        sensor_records,
+        text_records,
+        missing_log_policy="zero_vector",
+        multiple_log_policy="mean_sorted_log_id",
+    )
 
     assert result["sensor_embeddings"].shape == (5, 64)
     assert result["text_embeddings"].shape == (5, 768)

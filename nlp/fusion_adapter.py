@@ -187,10 +187,8 @@ def build_text_records(
                 ("source_split", split),
             ):
                 actual = entity.get(field)
-                if actual is not None and str(actual).strip() != expected:
-                    raise ValueError(
-                        f"Entity {field} mismatch for {log_id}"
-                    )
+                if actual is None or str(actual).strip() != expected:
+                    raise ValueError(f"Entity {field} mismatch for {log_id}")
 
         records.append({
             "log_id": log_id,
@@ -203,6 +201,7 @@ def build_text_records(
             "severity_label": severity.get("severity_label"),
             "matched_terms": matched_terms,
             "explanation": severity.get("explanation"),
+            "namespace": "synthetic_fixture",
         })
 
     if seen_rows != set(range(len(embeddings))):

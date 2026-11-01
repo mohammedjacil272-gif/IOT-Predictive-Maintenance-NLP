@@ -1,0 +1,131 @@
+{
+  "dataset_namespace": "azure_pdm_synthetic_fixture",
+  "is_synthetic": true,
+  "machine_id_coverage": {
+    "all_event_and_telemetry_ids_present": true,
+    "machines": [
+      1,
+      2
+    ]
+  },
+  "manifest_version": "azure_pdm_manifest_v1",
+  "predictive_performance_claim": false,
+  "source_kind": "local_synthetic_fixture",
+  "source_record_id_rule": "<source_filename>:<1-based CSV data row number>",
+  "tables": {
+    "PdM_errors.csv": {
+      "date_range_utc": {
+        "max": "2025-01-01T01:00:00Z",
+        "min": "2025-01-01T00:30:00Z"
+      },
+      "observed_columns": [
+        "datetime",
+        "machineID",
+        "errorID"
+      ],
+      "path": "experiments\\azure_pdm\\tests\\fixtures\\PdM_errors.csv",
+      "required_columns": [
+        "datetime",
+        "machineID",
+        "errorID"
+      ],
+      "row_count": 2,
+      "sha256": "ae751c06417f9b6c419c0b5b38d08def33faf8ff11da48c18e3660e927db464a",
+      "status": "PASS"
+    },
+    "PdM_failures.csv": {
+      "date_range_utc": {
+        "max": "2025-01-01T02:00:00Z",
+        "min": "2025-01-01T02:00:00Z"
+      },
+      "observed_columns": [
+        "datetime",
+        "machineID",
+        "failure"
+      ],
+      "path": "experiments\\azure_pdm\\tests\\fixtures\\PdM_failures.csv",
+      "required_columns": [
+        "datetime",
+        "machineID",
+        "failure"
+      ],
+      "row_count": 1,
+      "sha256": "1743ab12463bf66a2f59a3ba4aed426e05d0329283d7accffe0eceea129846ed",
+      "status": "PASS"
+    },
+    "PdM_machines.csv": {
+      "date_range_utc": {
+        "max": null,
+        "min": null
+      },
+      "observed_columns": [
+        "machineID",
+        "model",
+        "age"
+      ],
+      "path": "experiments\\azure_pdm\\tests\\fixtures\\PdM_machines.csv",
+      "required_columns": [
+        "machineID",
+        "model",
+        "age"
+      ],
+      "row_count": 2,
+      "sha256": "467a2928ad00cc8a97ea143e25df20d12f33b724997f975e3b11f790aed85481",
+      "status": "PASS"
+    },
+    "PdM_maint.csv": {
+      "date_range_utc": {
+        "max": "2024-12-31T23:00:00Z",
+        "min": "2024-12-31T23:00:00Z"
+      },
+      "observed_columns": [
+        "datetime",
+        "machineID",
+        "comp"
+      ],
+      "path": "experiments\\azure_pdm\\tests\\fixtures\\PdM_maint.csv",
+      "required_columns": [
+        "datetime",
+        "machineID",
+        "comp"
+      ],
+      "row_count": 1,
+      "sha256": "a2a0b0ea8fe78dde44d3d9ab380eff4e32821546cad4253fe6896a048bd66beb",
+      "status": "PASS"
+    },
+    "PdM_telemetry.csv": {
+      "date_range_utc": {
+        "max": "2025-01-01T01:00:00Z",
+        "min": "2025-01-01T00:00:00Z"
+      },
+      "observed_columns": [
+        "datetime",
+        "machineID",
+        "volt",
+        "rotate",
+        "pressure",
+        "vibration"
+      ],
+      "path": "experiments\\azure_pdm\\tests\\fixtures\\PdM_telemetry.csv",
+      "required_columns": [
+        "datetime",
+        "machineID",
+        "volt",
+        "rotate",
+        "pressure",
+        "vibration"
+      ],
+      "row_count": 4,
+      "sha256": "291da4af7adf8a2e94d42511b3aa733cdd307ca2fa3b1ed7b62b8f8246c797cd",
+      "status": "PASS"
+    }
+  },
+  "timestamp_policy": {
+    "allow_naive": true,
+    "normalization": "UTC",
+    "timezone_name": "UTC"
+  },
+  "training_performed": false,
+  "validation_issues": [],
+  "validation_status": "PASS"
+}

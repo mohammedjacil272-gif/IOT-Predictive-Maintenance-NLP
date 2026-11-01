@@ -1,0 +1,27 @@
+{
+  "repository": {
+    "branch": "feature/jacil-fusion-integration",
+    "head": "1b6770f106f34dae5b52e225fbef8813d02f33fc",
+    "working_tree_state": "pre-existing untracked project files plus the Day 1/Day 2 changes; no Git state-changing operations",
+    "classification": "Azure and NLP paths are simulated/interface benchmarks; FD001 is separate"
+  },
+  "components": [
+    {"name": "FD001 sensor schema/replay", "paths": ["iot/sensor_message.py", "iot/local_replay.py"], "status": "working_and_tested", "contract": "unit_id/cycle plus 17 finite FD001 features"},
+    {"name": "FD001 MQTT publisher", "paths": ["iot/mqtt_publisher.py"], "status": "working_with_mocks", "live_status": "not_connected"},
+    {"name": "FD001 InfluxDB ingestion/query", "paths": ["iot/influx_ingestion.py"], "status": "working_with_mocks", "live_status": "not_connected"},
+    {"name": "FD001 frozen LSTM inference", "paths": ["iot/lstm_inference.py"], "status": "working_with_recovered_external_checkpoint", "checkpoint_source": "${FD001_RECOVERY_ROOT}/artifacts/models/fd001_lstm_baseline/best_model.pt", "checkpoint_sha256": "388d6e45f6d9692aee1d8cc9d8de021c4fab4eb0ce8287445eb24973cc2db013", "integration_status": "not copied; repository regression remains blocked by absent local checkpoint"},
+    {"name": "NLP preprocessing/NER/severity", "paths": ["nlp/preprocessing.py", "nlp/ner.py", "nlp/severity.py"], "status": "working_and_tested", "data_status": "synthetic/interface fixtures only"},
+    {"name": "NLP transformer embeddings", "paths": ["nlp/embeddings.py"], "status": "diagnostic_fail_closed", "transformers_available": false, "network_download_attempted": false, "fallback": "clear RuntimeError; rule-based NLP remains available"},
+    {"name": "Fusion alignment/provenance", "paths": ["training/fusion_dataset.py", "training/fusion_provenance.py", "training/fusion_splits.py", "training/nlp_fusion_adapter.py", "training/nlp_fusion_pipeline.py"], "status": "working_and_contract_tested", "genuine_training": "blocked_without approvals/availability/aligned data"},
+    {"name": "Multimodal compatibility loader", "paths": ["training/train_multimodal.py"], "status": "working_fail_closed", "training": "explicitly blocked"},
+    {"name": "Azure saved-model inference", "paths": ["experiments/azure_pdm/inference.py", "experiments/azure_pdm/feature_engineering.py"], "status": "working_with_saved_phase7_artifact"},
+    {"name": "Azure streaming/replay adapter", "paths": ["experiments/azure_pdm/streaming.py", "experiments/azure_pdm/demo.py"], "status": "working_offline", "multi_machine_smoke": {"machines": [1, 2, 3], "predictions": 9, "records_seen": 78, "duplicates": 0, "gap_resets": 0, "invalid": 0}}
+  ],
+  "protected_assets": {
+    "phase5_and_phase7": "verified unchanged",
+    "raw_azure_and_manifest": "verified unchanged and hashes match",
+    "fd001_local_checkpoint": "absent; not regenerated or copied",
+    "fd001_external_checkpoint": "available read-only at recorded source"
+  },
+  "tests": {"passing": 187, "warnings": 1, "blocked": ["tests/test_lstm_inference.py::TestLSTMInference::test_frozen_artifacts_predict_without_live_services"], "blocked_reason": "local FD001 checkpoint absent"}
+}

@@ -1,9 +1,12 @@
+
 """Fail-closed provenance and point-in-time checks for fusion inputs."""
 
 from __future__ import annotations
 
 import math
 import re
+from hashlib import sha256
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Mapping
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -30,6 +33,136 @@ GENUINE_APPROVALS = (
 )
 TRAINING_AUTHORIZATION = "fusion_training_authorization"
 FINAL_EVALUATION_AUTHORIZATION = "final_held_out_evaluation_authorization"
+APPROVED_MANIFEST = "approved_manifest"
+
+
+def _required_text(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Approved manifest requires non-empty {field}.")
+    return value.strip()
+
+
+def validate_approved_manifest(approval: Mapping) -> Mapping:
+    """Validate the immutable lineage manifest attached to a genuine approval."""
+    manifest = approval.get(APPROVED_MANIFEST)
+    if not isinstance(manifest, Mapping):
+        raise ValueError("Genuine-data use is blocked without an approved artifact manifest.")
+    for field in ("manifest_id", "equipment_mapping_id"):
+        _required_text(manifest.get(field), field)
+    datasets = manifest.get("datasets")
+    if datasets is not None:
+        if not isinstance(datasets, Mapping) or not {"sensor", "text"}.issubset(datasets):
+            raise ValueError("Approved manifest datasets must include sensor and text identities.")
+        for modality, dataset in datasets.items():
+            if not isinstance(dataset, Mapping):
+                raise ValueError(f"Malformed approved dataset entry: {modality!r}.")
+            for field in ("source_dataset", "source_dataset_version", "preprocessing_version"):
+                _required_text(dataset.get(field), f"{modality}.{field}")
+    else:
+        for field in ("source_dataset", "source_dataset_version", "preprocessing_version"):
+            _required_text(manifest.get(field), field)
+    scopes = manifest.get("record_scope")
+    if not isinstance(scopes, Mapping) or not {"sensor", "text"}.issubset(scopes):
+        raise ValueError("Approved manifest must define sensor and text record scopes.")
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, Mapping) or not artifacts:
+        raise ValueError("Approved artifact manifest must enumerate artifacts.")
+    for artifact_key, artifact in artifacts.items():
+        if not isinstance(artifact, Mapping):
+            raise ValueError(f"Malformed approved artifact entry: {artifact_key!r}.")
+        for field in (
+            "artifact_id",
+            "artifact_sha256",
+            "artifact_path",
+            "modality",
+            "embedding_model",
+            "embedding_revision",
+        ):
+            _required_text(artifact.get(field), f"artifact.{field}")
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", artifact["artifact_sha256"]):
+            raise ValueError(f"Approved artifact {artifact_key!r} has an invalid SHA-256 digest.")
+        if artifact["modality"] not in {"sensor", "text"}:
+            raise ValueError(f"Approved artifact {artifact_key!r} has an invalid modality.")
+        binding = artifact.get("embedding_sha256") or artifact.get(
+            "embedding_sha256_by_source_record_id"
+        )
+        if isinstance(binding, str):
+            if not re.fullmatch(r"[0-9a-fA-F]{64}", binding):
+                raise ValueError(f"Approved artifact {artifact_key!r} has an invalid embedding digest.")
+        elif isinstance(binding, Mapping):
+            if not binding or any(
+                not isinstance(key, str)
+                or not isinstance(value, str)
+                or not re.fullmatch(r"[0-9a-fA-F]{64}", value)
+                for key, value in binding.items()
+            ):
+                raise ValueError(f"Approved artifact {artifact_key!r} has invalid record embedding digests.")
+        else:
+            raise ValueError(f"Approved artifact {artifact_key!r} lacks an embedding digest binding.")
+    decision = (
+        approval.get("approvals", {}).get("embedding_provenance")
+        if isinstance(approval.get("approvals"), Mapping)
+        else None
+    )
+    if not isinstance(decision, Mapping) or decision.get("manifest_id") != manifest["manifest_id"]:
+        raise ValueError("Embedding-provenance approval is not bound to the approved manifest.")
+    return manifest
+
+
+def validate_record_against_manifest(
+    record: Mapping,
+    *,
+    approval: Mapping,
+    modality: str,
+) -> Mapping:
+    """Verify record lineage, artifact bytes, and approved modality identity."""
+    manifest = validate_approved_manifest(approval)
+    if modality not in {"sensor", "text"}:
+        raise ValueError(f"Unsupported provenance modality: {modality!r}.")
+    dataset = (
+        manifest.get("datasets", {}).get(modality)
+        if isinstance(manifest.get("datasets"), Mapping)
+        else manifest
+    )
+    common = {
+        "source_dataset": dataset["source_dataset"],
+        "source_dataset_version": dataset["source_dataset_version"],
+        "equipment_mapping_id": manifest["equipment_mapping_id"],
+        "preprocessing_version": dataset["preprocessing_version"],
+    }
+    for field, expected in common.items():
+        if record.get(field) != expected:
+            raise ValueError(f"Record {field} does not match the approved manifest.")
+    artifact_id = _required_text(record.get("artifact_id"), "record.artifact_id")
+    source_record_id = _required_text(record.get("source_record_id"), "record.source_record_id")
+    scope = manifest["record_scope"].get(modality)
+    if not isinstance(scope, Mapping):
+        raise ValueError(f"Approved manifest has no record scope for {modality}.")
+    allowed_ids = scope.get("allowed_source_record_ids")
+    if allowed_ids is not None:
+        if not isinstance(allowed_ids, (list, tuple, set)) or source_record_id not in allowed_ids:
+            raise ValueError("Record source_record_id is outside the approved manifest scope.")
+    elif scope.get("scope_type") != "dataset":
+        raise ValueError("Approved manifest record scope is incomplete.")
+    artifact = manifest["artifacts"].get(artifact_id)
+    if not isinstance(artifact, Mapping) or artifact.get("modality") != modality:
+        raise ValueError("Record artifact is not included for this modality in the approved manifest.")
+    for field in (
+        "artifact_id",
+        "artifact_sha256",
+        "artifact_path",
+        "embedding_model",
+        "embedding_revision",
+    ):
+        if record.get(field) != artifact.get(field):
+            raise ValueError(f"Record {field} does not match the approved artifact manifest.")
+    path = Path(artifact["artifact_path"])
+    if not path.is_file():
+        raise ValueError(f"Approved artifact is missing or unreadable: {path}")
+    actual = sha256(path.read_bytes()).hexdigest()
+    if actual.lower() != artifact["artifact_sha256"].lower():
+        raise ValueError("Approved artifact bytes do not match the manifest digest.")
+    return manifest
 
 
 def validate_reproducibility_contract(config: Mapping) -> None:
@@ -114,7 +247,12 @@ def validate_verification_report(
         raise ValueError("Verification report is missing a required passing verification.")
 
 
-def parse_aware_timestamp(value: object, *, field: str, timezone_name: str) -> datetime:
+def parse_aware_timestamp(
+    value: object,
+    *,
+    field: str,
+    timezone_name: str,
+) -> datetime:
     """Parse an ISO timestamp, requiring an offset and validating its zone."""
     if isinstance(value, datetime):
         parsed = value
@@ -175,6 +313,17 @@ def validate_point_in_time(
         field: parse_aware_timestamp(record.get(field), field=field, timezone_name=zone)
         for field in TIMESTAMP_FIELDS
     }
+    ordered_fields = (
+        "event_time",
+        "record_creation_time",
+        "ingestion_time",
+        "availability_time",
+    )
+    for earlier, later in zip(ordered_fields, ordered_fields[1:]):
+        if parsed[earlier] > parsed[later]:
+            raise ValueError(
+                f"Timestamp ordering violation: {earlier} must not be after {later}."
+            )
     parsed_cutoff = parse_aware_timestamp(cutoff, field="cutoff", timezone_name=zone)
     is_available = (
         parsed["availability_time"] <= parsed_cutoff
@@ -187,7 +336,7 @@ def validate_point_in_time(
     return parsed
 
 
-def validate_genuine_approval(approval: Mapping | None) -> None:
+def validate_genuine_approval(approval: Mapping | None) -> Mapping:
     """Require a recorded approval and evidence reference for every gate."""
     if not isinstance(approval, Mapping):
         raise ValueError("Genuine-data use is blocked: no approval register supplied.")
@@ -215,6 +364,7 @@ def validate_genuine_approval(approval: Mapping | None) -> None:
             "Genuine-data use is blocked; approval records need approver and "
             "evidence_refs: " + ", ".join(malformed)
         )
+    return validate_approved_manifest(approval)
 
 
 def _valid_approval_record(item: object) -> bool:
