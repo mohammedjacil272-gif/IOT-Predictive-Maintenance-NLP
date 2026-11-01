@@ -1,3 +1,4 @@
+
 """Fail-closed multimodal data-contract compatibility layer.
 
 This module restores the existing loader/dataset interface used by the fusion

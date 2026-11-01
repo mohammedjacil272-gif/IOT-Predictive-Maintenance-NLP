@@ -1,3 +1,4 @@
+
 """Enforced synthetic NLP-artifact to fusion orchestration boundary."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+
 """Metadata-based fusion alignment with explicit, provisional policies."""
 
 from __future__ import annotations
@@ -121,6 +122,7 @@ def _validate_genuine_artifact_provenance(record: Mapping, context: str) -> None
 
 class _ValidationReceipt:
     __slots__ = ("_manifest_id", "_content_digest", "_locked")
+
     def __init__(self, manifest_id: str | None, content_digest: str) -> None:
         object.__setattr__(self, "_manifest_id", manifest_id)
         object.__setattr__(self, "_content_digest", content_digest)
@@ -178,15 +180,26 @@ def _freeze(value: object) -> object:
     return value
 
 
-def validate_embedding_against_manifest(record: Mapping, embedding: torch.Tensor, manifest: Mapping, modality: str) -> None:
+def validate_embedding_against_manifest(
+    record: Mapping,
+    embedding: torch.Tensor,
+    manifest: Mapping,
+    modality: str,
+) -> None:
     artifact = manifest["artifacts"][record["artifact_id"]]
     actual = embedding_digest(embedding)
     if record.get("embedding_sha256") != actual:
         raise ValueError(f"Genuine {modality} embedding digest does not match its values.")
     by_record = artifact.get("embedding_sha256_by_source_record_id")
-    expected = by_record.get(record["source_record_id"]) if isinstance(by_record, Mapping) else artifact.get("embedding_sha256")
+    expected = (
+        by_record.get(record["source_record_id"])
+        if isinstance(by_record, Mapping)
+        else artifact.get("embedding_sha256")
+    )
     if expected != actual:
-        raise ValueError(f"Genuine {modality} embedding is not bound to the approved artifact record.")
+        raise ValueError(
+            f"Genuine {modality} embedding is not bound to the approved artifact record."
+        )
 
 
 class ValidatedFusionSamples(Mapping):
@@ -198,7 +211,11 @@ class ValidatedFusionSamples(Mapping):
     def __init__(self, data: Mapping, receipt: _ValidationReceipt | None = None) -> None:
         if not isinstance(receipt, _ValidationReceipt):
             raise TypeError("ValidatedFusionSamples must come from strict fusion validation.")
-        object.__setattr__(self, "_data", MappingProxyType({key: _freeze(value) for key, value in data.items()}))
+        object.__setattr__(
+            self,
+            "_data",
+            MappingProxyType({key: _freeze(value) for key, value in data.items()}),
+        )
         object.__setattr__(self, "_receipt", receipt)
         object.__setattr__(self, "_locked", True)
 
@@ -556,7 +573,11 @@ def build_fusion_samples(
             }
             for log in logs
         ])
-        scores = [log["severity"]["severity_score"] for log in logs if log["severity"]["severity_score"] is not None]
+        scores = [
+            log["severity"]["severity_score"]
+            for log in logs
+            if log["severity"]["severity_score"] is not None
+        ]
         window_severity.append(max(scores) if scores else None)
         if logs:
             text_vectors.append(torch.stack([log["embedding"] for log in logs]).mean(0))

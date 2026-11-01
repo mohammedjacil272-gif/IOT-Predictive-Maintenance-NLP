@@ -1,3 +1,4 @@
+
 """Regression coverage for maintenance measurement extraction."""
 
 import pytest
@@ -50,16 +51,23 @@ def test_non_string_measurement_input_is_rejected():
         extract_entities(None)
 
 
-@pytest.mark.parametrize("measurement", ["-5 PSI", "95 PSI", "12.5 bar"])
+@pytest.mark.parametrize(
+    "measurement",
+    ["-5 PSI", "95 PSI", "12.5 bar"],
+)
 def test_signed_positive_and_decimal_measurement_units_are_supported(measurement):
     entities = [
         entity for entity in extract_entities(f"Reading: {measurement}")
         if entity["label"] == "MEASUREMENT"
     ]
+
     assert [entity["entity_text"] for entity in entities] == [measurement]
 
 
-@pytest.mark.parametrize("text", ["95 PSIx", "95 C", "- 5 PSI", "+ 5 PSI"])
+@pytest.mark.parametrize(
+    "text",
+    ["95 PSIx", "95 C", "- 5 PSI", "+ 5 PSI"],
+)
 def test_measurement_unit_boundaries_and_malformed_signs_are_rejected(text):
     assert [
         entity for entity in extract_entities(text)

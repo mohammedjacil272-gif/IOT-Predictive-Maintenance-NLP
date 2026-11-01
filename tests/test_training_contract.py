@@ -1,3 +1,4 @@
+
 from pathlib import Path
 from io import StringIO
 
@@ -48,7 +49,10 @@ def approval_config(sensor_artifact_path=None):
             "source_checkpoint_sha256": "c" * 64,
         },
         "operational_horizon": {"value": 25, "unit": "cycles"},
-        "prediction_cutoff": {"1:1": "2025-01-01T00:00:00Z", "1:2": "2025-01-01T00:00:00Z"},
+        "prediction_cutoff": {
+            "1:1": "2025-01-01T00:00:00Z",
+            "1:2": "2025-01-01T00:00:00Z",
+        },
         "point_in_time_policy": {
             "approved": True,
             "timezone": "UTC",
@@ -65,13 +69,45 @@ def approval_config(sensor_artifact_path=None):
             "manifest_id": manifest_id,
             "equipment_mapping_id": "test-map",
             "datasets": {
-                "sensor": {"source_dataset": "synthetic-test", "source_dataset_version": "v1", "preprocessing_version": "test-preprocess-v1"},
-                "text": {"source_dataset": "synthetic-test-log", "source_dataset_version": "v1", "preprocessing_version": "test-preprocessing-v1"},
+                "sensor": {
+                    "source_dataset": "synthetic-test",
+                    "source_dataset_version": "v1",
+                    "preprocessing_version": "test-preprocess-v1",
+                },
+                "text": {
+                    "source_dataset": "synthetic-test-log",
+                    "source_dataset_version": "v1",
+                    "preprocessing_version": "test-preprocessing-v1",
+                },
             },
-            "record_scope": {"sensor": {"scope_type": "dataset"}, "text": {"scope_type": "dataset"}},
+            "record_scope": {
+                "sensor": {"scope_type": "dataset"},
+                "text": {"scope_type": "dataset"},
+            },
             "artifacts": {
-                "test-embedding-artifact": {"artifact_id": "test-embedding-artifact", "artifact_sha256": __import__("hashlib").sha256(Path(sensor_artifact_path).read_bytes()).hexdigest(), "artifact_path": sensor_artifact_path, "modality": "sensor", "embedding_model": "test-model", "embedding_revision": "test-revision", "embedding_sha256_by_source_record_id": {"row-1": embedding_digest([10.0] + [0.0] * 63), "row-2": embedding_digest([20.0] + [0.0] * 63)}},
-                "test-text-artifact": {"artifact_id": "test-text-artifact", "artifact_sha256": artifact_hash, "artifact_path": artifact_path, "modality": "text", "embedding_model": "test-model", "embedding_revision": "test-revision", "embedding_sha256": embedding_digest([0.0] * 768)},
+                "test-embedding-artifact": {
+                    "artifact_id": "test-embedding-artifact",
+                    "artifact_sha256": __import__("hashlib").sha256(
+                        Path(sensor_artifact_path).read_bytes()
+                    ).hexdigest(),
+                    "artifact_path": sensor_artifact_path,
+                    "modality": "sensor",
+                    "embedding_model": "test-model",
+                    "embedding_revision": "test-revision",
+                    "embedding_sha256_by_source_record_id": {
+                        "row-1": embedding_digest([10.0] + [0.0] * 63),
+                        "row-2": embedding_digest([20.0] + [0.0] * 63),
+                    },
+                },
+                "test-text-artifact": {
+                    "artifact_id": "test-text-artifact",
+                    "artifact_sha256": artifact_hash,
+                    "artifact_path": artifact_path,
+                    "modality": "text",
+                    "embedding_model": "test-model",
+                    "embedding_revision": "test-revision",
+                    "embedding_sha256": embedding_digest([0.0] * 768),
+                },
             },
         },
     }
@@ -212,7 +248,9 @@ def test_sensor_target_must_match_frozen_uncapped_rul(monkeypatch, tmp_path):
     original_open = Path.open
 
     monkeypatch.setattr(np, "load", lambda _path, **kwargs: embeddings)
-    manifest_hash = __import__("hashlib").sha256((sensor_dir / "sensor_embeddings.npy").read_bytes()).hexdigest()
+    manifest_hash = __import__("hashlib").sha256(
+        (sensor_dir / "sensor_embeddings.npy").read_bytes()
+    ).hexdigest()
     monkeypatch.setattr("training.train_multimodal.sha256_file", lambda _path: manifest_hash)
     monkeypatch.setattr(
         pd,
@@ -294,7 +332,11 @@ def test_embedding_indices_are_an_explicit_artifact_local_mapping():
 
 
 def test_object_sensor_arrays_are_rejected_before_use(monkeypatch):
-    monkeypatch.setattr(np, "load", lambda _path, **kwargs: np.array([[{"x": 1}]], dtype=object))
+    monkeypatch.setattr(
+        np,
+        "load",
+        lambda _path, **kwargs: np.array([[{"x": 1}]], dtype=object),
+    )
     with pytest.raises(ValueError, match="Object arrays"):
         _load_sensor_embeddings(Path("object.npy"))
 
@@ -394,12 +436,21 @@ def test_text_artifact_bytes_must_match_approved_hash(tmp_path):
 def test_training_dataset_includes_has_log_only_when_selected():
     with pytest.raises(ValueError, match="strict fusion validation"):
         make_dataset({"split": ("train",)}, "train", use_has_log=False)
+
     samples = build_fusion_samples(
-        [{"unit_id": 1, "cycle": 1, "split": "train", "namespace": "synthetic_fixture", "sensor_embedding": [0.0] * 64, "rul": 1.0}],
+        [{
+            "unit_id": 1,
+            "cycle": 1,
+            "split": "train",
+            "namespace": "synthetic_fixture",
+            "sensor_embedding": [0.0] * 64,
+            "rul": 1.0,
+        }],
         [],
         missing_log_policy="zero_vector",
         multiple_log_policy="mean_sorted_log_id",
     )
+
     excluded = make_dataset(samples, "train", use_has_log=False)
     included = make_dataset(samples, "train", use_has_log=True)
     assert len(excluded.tensors) == 3
@@ -417,29 +468,48 @@ def test_forged_validated_sample_marker_is_rejected():
 
 def test_validated_samples_are_immutable_and_defensive():
     samples = build_fusion_samples(
-        [{"unit_id": 1, "cycle": 1, "split": "train", "namespace": "synthetic_fixture", "sensor_embedding": [0.0] * 64, "rul": 1.0}],
+        [{
+            "unit_id": 1,
+            "cycle": 1,
+            "split": "train",
+            "namespace": "synthetic_fixture",
+            "sensor_embedding": [0.0] * 64,
+            "rul": 1.0,
+        }],
         [],
         missing_log_policy="zero_vector",
         multiple_log_policy="mean_sorted_log_id",
     )
     with pytest.raises(TypeError):
         samples["split"] = ("validation",)
+
     detached = samples["sensor_embeddings"]
     detached[0, 0] = 99.0
     assert float(samples["sensor_embeddings"][0, 0]) == 0.0
 
 
-@pytest.mark.parametrize("field", ["sensor_embeddings", "split", "sensor_provenance_by_window"])
+@pytest.mark.parametrize(
+    "field",
+    ["sensor_embeddings", "split", "sensor_provenance_by_window"],
+)
 def test_validation_receipt_rejects_post_validation_content_changes(field):
     from types import MappingProxyType
 
     samples = build_fusion_samples(
-        [{"unit_id": 1, "cycle": 1, "split": "train", "namespace": "synthetic_fixture", "sensor_embedding": [0.0] * 64, "rul": 1.0}],
+        [{
+            "unit_id": 1,
+            "cycle": 1,
+            "split": "train",
+            "namespace": "synthetic_fixture",
+            "sensor_embedding": [0.0] * 64,
+            "rul": 1.0,
+        }],
         [],
         missing_log_policy="zero_vector",
         multiple_log_policy="mean_sorted_log_id",
     )
     changed = {key: samples[key] for key in samples}
+
     if field == "sensor_embeddings":
         changed[field] = changed[field].clone()
         changed[field][0, 0] = 1.0
@@ -447,7 +517,9 @@ def test_validation_receipt_rejects_post_validation_content_changes(field):
         changed[field] = ("validation",)
     else:
         changed[field] = ({"source_record_id": "substituted"},)
+
     object.__setattr__(samples, "_data", MappingProxyType(changed))
+
     with pytest.raises(ValueError, match="content digest mismatch"):
         make_dataset(samples, "train", use_has_log=False)
 

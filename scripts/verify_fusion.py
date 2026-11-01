@@ -1,3 +1,4 @@
+
 """Forward-only smoke test of the fusion model using synthetic data."""
 
 import torch
@@ -13,11 +14,13 @@ def main() -> None:
 
     model = MultimodalFusionModel(use_has_log=False)
     model.eval()
+
     with torch.inference_mode():
         predictions = model(sensor, text)
 
     assert predictions.shape == (count,)
     assert torch.isfinite(predictions).all().item()
+
     print("Synthetic forward-only smoke test: PASS")
     print("Sensor shape:", tuple(sensor.shape))
     print("Text shape:", tuple(text.shape))

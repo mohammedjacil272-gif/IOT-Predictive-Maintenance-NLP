@@ -1,3 +1,4 @@
+
 """Fail-closed provenance and point-in-time checks for fusion inputs."""
 
 from __future__ import annotations
@@ -69,37 +70,60 @@ def validate_approved_manifest(approval: Mapping) -> Mapping:
     for artifact_key, artifact in artifacts.items():
         if not isinstance(artifact, Mapping):
             raise ValueError(f"Malformed approved artifact entry: {artifact_key!r}.")
-        for field in ("artifact_id", "artifact_sha256", "artifact_path", "modality", "embedding_model", "embedding_revision"):
+        for field in (
+            "artifact_id",
+            "artifact_sha256",
+            "artifact_path",
+            "modality",
+            "embedding_model",
+            "embedding_revision",
+        ):
             _required_text(artifact.get(field), f"artifact.{field}")
         if not re.fullmatch(r"[0-9a-fA-F]{64}", artifact["artifact_sha256"]):
             raise ValueError(f"Approved artifact {artifact_key!r} has an invalid SHA-256 digest.")
         if artifact["modality"] not in {"sensor", "text"}:
             raise ValueError(f"Approved artifact {artifact_key!r} has an invalid modality.")
-        binding = artifact.get("embedding_sha256") or artifact.get("embedding_sha256_by_source_record_id")
+        binding = artifact.get("embedding_sha256") or artifact.get(
+            "embedding_sha256_by_source_record_id"
+        )
         if isinstance(binding, str):
             if not re.fullmatch(r"[0-9a-fA-F]{64}", binding):
                 raise ValueError(f"Approved artifact {artifact_key!r} has an invalid embedding digest.")
         elif isinstance(binding, Mapping):
             if not binding or any(
-                not isinstance(key, str) or not isinstance(value, str)
+                not isinstance(key, str)
+                or not isinstance(value, str)
                 or not re.fullmatch(r"[0-9a-fA-F]{64}", value)
                 for key, value in binding.items()
             ):
                 raise ValueError(f"Approved artifact {artifact_key!r} has invalid record embedding digests.")
         else:
             raise ValueError(f"Approved artifact {artifact_key!r} lacks an embedding digest binding.")
-    decision = approval.get("approvals", {}).get("embedding_provenance") if isinstance(approval.get("approvals"), Mapping) else None
+    decision = (
+        approval.get("approvals", {}).get("embedding_provenance")
+        if isinstance(approval.get("approvals"), Mapping)
+        else None
+    )
     if not isinstance(decision, Mapping) or decision.get("manifest_id") != manifest["manifest_id"]:
         raise ValueError("Embedding-provenance approval is not bound to the approved manifest.")
     return manifest
 
 
-def validate_record_against_manifest(record: Mapping, *, approval: Mapping, modality: str) -> Mapping:
+def validate_record_against_manifest(
+    record: Mapping,
+    *,
+    approval: Mapping,
+    modality: str,
+) -> Mapping:
     """Verify record lineage, artifact bytes, and approved modality identity."""
     manifest = validate_approved_manifest(approval)
     if modality not in {"sensor", "text"}:
         raise ValueError(f"Unsupported provenance modality: {modality!r}.")
-    dataset = manifest.get("datasets", {}).get(modality) if isinstance(manifest.get("datasets"), Mapping) else manifest
+    dataset = (
+        manifest.get("datasets", {}).get(modality)
+        if isinstance(manifest.get("datasets"), Mapping)
+        else manifest
+    )
     common = {
         "source_dataset": dataset["source_dataset"],
         "source_dataset_version": dataset["source_dataset_version"],
@@ -123,7 +147,13 @@ def validate_record_against_manifest(record: Mapping, *, approval: Mapping, moda
     artifact = manifest["artifacts"].get(artifact_id)
     if not isinstance(artifact, Mapping) or artifact.get("modality") != modality:
         raise ValueError("Record artifact is not included for this modality in the approved manifest.")
-    for field in ("artifact_id", "artifact_sha256", "artifact_path", "embedding_model", "embedding_revision"):
+    for field in (
+        "artifact_id",
+        "artifact_sha256",
+        "artifact_path",
+        "embedding_model",
+        "embedding_revision",
+    ):
         if record.get(field) != artifact.get(field):
             raise ValueError(f"Record {field} does not match the approved artifact manifest.")
     path = Path(artifact["artifact_path"])
@@ -217,7 +247,12 @@ def validate_verification_report(
         raise ValueError("Verification report is missing a required passing verification.")
 
 
-def parse_aware_timestamp(value: object, *, field: str, timezone_name: str) -> datetime:
+def parse_aware_timestamp(
+    value: object,
+    *,
+    field: str,
+    timezone_name: str,
+) -> datetime:
     """Parse an ISO timestamp, requiring an offset and validating its zone."""
     if isinstance(value, datetime):
         parsed = value
