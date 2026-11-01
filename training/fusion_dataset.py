@@ -296,6 +296,11 @@ def build_fusion_samples(
                         f"Genuine entity for log {log_id} is missing provenance: "
                         f"{sorted(missing_entity_provenance)}"
                     )
+            entity_log_id = item.get("log_id")
+            if not isinstance(entity_log_id, str) or not entity_log_id.strip():
+                raise ValueError(
+                    f"Entity for log {log_id} is missing a valid log_id."
+                )
             for field, expected_value in expected.items():
                 if field in item and item[field] != expected_value:
                     raise ValueError(f"Entity provenance mismatch for log {log_id}: {field}")
