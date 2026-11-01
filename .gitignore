@@ -1,5 +1,6 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
 .env
@@ -9,9 +10,23 @@ venv/
 .vscode/
 .idea/
 *.log
+
+# Model and generated numeric artifacts. Existing tracked files remain tracked.
 *.pt
 *.pth
 *.ckpt
+*.npy
+*.npz
+*.joblib
+*.pkl
+*.parquet
+
+# Local/raw/generated experiment material. Required source code, tests,
+# fixture CSVs, reports, contracts, and documentation remain trackable.
+/raw/
+/raw_acquisition_*/
+/derived_phase*/
+/phase*_outputs/
 
 # Unused C-MAPSS subsets for the current FD001 experiment
 data/train_FD002.txt

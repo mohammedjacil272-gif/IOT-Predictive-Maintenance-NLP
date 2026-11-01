@@ -56,7 +56,6 @@ def ensure_baseline_data(data_dir: Path) -> None:
 
 
 def verify_data_artifacts(data_dir: Path) -> dict[str, object]:
-    ensure_baseline_data(data_dir)
     missing = [name for name in REQUIRED_DATA_FILES if not (data_dir / name).exists()]
     if missing:
         raise FileNotFoundError(f"Missing baseline data artifacts: {missing}")
@@ -128,10 +127,14 @@ def verify_trained_artifacts(
     metrics_dir: Path,
     embeddings_dir: Path,
 ) -> dict[str, object]:
-    checks = verify_data_artifacts(data_dir)
     missing = [name for name in REQUIRED_TRAINED_FILES if not (model_dir / name).exists()]
     if missing:
-        raise FileNotFoundError(f"Missing trained model artifacts: {missing}")
+        raise FileNotFoundError(
+            "Missing trained model artifacts in read-only verification; not regenerate: "
+            f"{missing}"
+        )
+
+    checks = verify_data_artifacts(data_dir)
 
     history = pd.read_csv(metrics_dir / "training_history.csv")
     validation_metrics = load_json(metrics_dir / "validation_metrics.json")
