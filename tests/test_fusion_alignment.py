@@ -3,6 +3,7 @@ import torch
 
 from models.multimodal_fusion import MultimodalFusionModel
 from training.fusion_dataset import build_fusion_samples as _build_fusion_samples
+from training.fusion_dataset import UnmatchedTextRecordsError
 
 
 def build_fusion_samples(sensor_records, text_records, **kwargs):
@@ -67,6 +68,21 @@ def test_unmatched_text_rejected():
         build_fusion_samples([sensor(1, 1)], [log("x", 9, 1, 2)])
 
 
+def test_unmatched_text_error_audits_all_records_without_embedding_payloads():
+    records = [log("x", 9, 1, 2), log("y", 8, 3, 4)]
+    records[0]["source_record_id"] = "synthetic-source-x"
+    records[1]["source_record_id"] = "synthetic-source-y"
+    with pytest.raises(UnmatchedTextRecordsError) as exc_info:
+        build_fusion_samples([sensor(1, 1)], records)
+
+    audited = exc_info.value.unmatched_records
+    assert [item["log_id"] for item in audited] == ["x", "y"]
+    assert [item["source_record_id"] for item in audited] == [
+        "synthetic-source-x", "synthetic-source-y"
+    ]
+    assert all("text_embedding" not in item["record_metadata"] for item in audited)
+
+
 def test_split_mismatch_rejected():
     with pytest.raises(ValueError, match="Split mismatch"):
         build_fusion_samples(
@@ -94,6 +110,14 @@ def test_entity_provenance_mismatch_rejected():
     text = log("log-1", 1, 1, 2)
     text["entities"] = [{"log_id": "different-log", "label": "SYMPTOM"}]
     with pytest.raises(ValueError, match="Entity provenance mismatch.*log_id"):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
+@pytest.mark.parametrize("entity", [{}, {"log_id": ""}, {"log_id": "unknown-log"}])
+def test_entity_requires_matching_nonempty_log_id(entity):
+    text = log("log-1", 1, 1, 2)
+    text["entities"] = [entity]
+    with pytest.raises(ValueError, match="Entity .*log_id|Entity provenance mismatch.*log_id"):
         build_fusion_samples([sensor(1, 1)], [text])
 
 
@@ -230,13 +254,13 @@ def test_provenance_and_window_severity_are_preserved():
         [
             {
                 **log("log_b", 1, 10, 4.0),
-                "entities": [{"entity_text": "overheating", "label": "SYMPTOM"}],
+                "entities": [{"log_id": "log_b", "entity_text": "overheating", "label": "SYMPTOM"}],
                 "severity_score": 4,
                 "severity_label": "high",
             },
             {
                 **log("log_a", 1, 10, 2.0),
-                "entities": [{"entity_text": "bearing", "label": "COMPONENT"}],
+                "entities": [{"log_id": "log_a", "entity_text": "bearing", "label": "COMPONENT"}],
                 "severity_score": 2,
                 "severity_label": "medium",
             },
