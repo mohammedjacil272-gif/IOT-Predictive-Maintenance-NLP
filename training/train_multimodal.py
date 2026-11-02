@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from models.multimodal_fusion import MultimodalFusionModel
 from training.fusion_metrics import regression_metrics
+from training.fusion_integrity import issue_integrity_receipt, verify_integrity_receipt
 from training.fusion_provenance import (
     TRAINING_AUTHORIZATION,
     validate_genuine_approval,
@@ -493,7 +494,10 @@ def main():
         point_in_time_policy=approval_config["point_in_time_policy"],
         prediction_cutoff=approval_config["prediction_cutoff"],
     )
+    issue_integrity_receipt(samples)
+    verify_integrity_receipt(samples)
 
+    print("Fusion sample integrity verification: PASS")
     # Confirm that no engine appears in both splits.
     train_engines = {
         int(samples["unit_id"][i])
