@@ -1,96 +1,106 @@
-# Architecture
+# Implemented Architecture and Readiness
 
-## Overview
+## Scope and status
 
-The planned system is a multimodal predictive-maintenance architecture. It will combine structured sensor time-series data with unstructured technician maintenance logs.
+This repository implements the sensor-only FD001 pipeline, synthetic-capable
+technician-log NLP artifact generation, and a metadata-aligned fusion model and
+adapter. The fusion components are interface-validated with synthetic data.
+Genuine paired-data training and predictive-performance evaluation are blocked
+by missing external evidence and authorization. No MQTT, InfluxDB, MongoDB,
+Azure, Ollama, spaCy, or service-integration implementation is present in this
+checkout.
 
-Development should proceed incrementally. The sensor branch must be built and validated first, then used as the official baseline before adding NLP and multimodal fusion components.
-
-## Sensor Branch
-
-The sensor branch processes machine operating data from the NASA C-MAPSS FD001 dataset.
-
-Planned flow:
-
-```text
-Sensor Data
-    |
-Preprocessing
-    |
-Sliding Windows
-    |
-LSTM
-    |
-Sensor Embedding
-```
-
-Responsibilities:
-
-- Load and validate C-MAPSS FD001 files from `Data/`.
-- Compute remaining useful life labels correctly.
-- Preserve per-engine temporal order.
-- Normalize data without test leakage.
-- Generate sliding windows for sequence modeling.
-- Train a future LSTM baseline.
-- Extract learned sensor embeddings after the baseline is established.
-
-The verified FD001 files are whitespace-delimited, headerless, 26-column files. Positional columns map to engine/unit ID, cycle, three operational settings, and 21 sensor measurements. Some setting and sensor columns are constant in both FD001 train and test, but feature selection must remain explicit and must not silently remove them.
-
-The sensor-only LSTM model will become the official baseline for comparing later multimodal improvements.
-
-## NLP Branch
-
-The NLP branch will process unstructured technician maintenance logs.
-
-Planned flow:
+## Sensor path
 
 ```text
-Technician Logs
-    |
-NLP Preprocessing
-    |
-NER + Severity Scoring
-    |
-BERT
-    |
-Text Embedding
+data/train_FD001.txt, data/test_FD001.txt, data/RUL_FD001.txt
+  -> preprocessing/cmapss_fd001.py or training/dataset.py
+  -> engine-isolated train/validation split
+  -> StandardScaler fit on training rows only
+  -> 30-cycle windows with 17 explicitly selected features
+  -> models/lstm_baseline.py
+  -> 64-D final LSTM hidden-state embeddings and window metadata
 ```
 
-Responsibilities:
+The baseline target is uncapped `max_cycle(unit) - cycle`. The test pipeline
+creates terminal windows and associates official final RUL labels, but training
+and model selection are documented as train/validation only. Do not use the
+official test labels for development or modify frozen artifacts. The original
+baseline checkpoints are absent from the checked-in model directory; obtain
+them from the baseline owner for read-only verification rather than retraining.
 
-- Clean and normalize technician maintenance text.
-- Identify relevant maintenance entities using NER.
-- Estimate severity signals from log content.
-- Generate text embeddings using BERT or a suitable transformer model.
+Two overlapping preprocessing/data-preparation implementations exist:
+`preprocessing/cmapss_fd001.py` writes `artifacts/preprocessing/fd001`, while
+`training/dataset.py` prepares the baseline train/validation/test windows under
+`artifacts/data/fd001_lstm_baseline`. They share feature constants but produce
+different artifact contracts. Existing baseline outputs are frozen; consolidation
+requires a separately reviewed migration and must not regenerate them.
 
-This branch should not be implemented until the sensor preprocessing and baseline work are complete.
-
-## Multimodal Fusion
-
-The future fusion stage will combine:
-
-- Sensor embeddings from the LSTM branch.
-- Text embeddings from the NLP branch.
-
-Planned flow:
+## NLP path
 
 ```text
-Sensor Embedding ----|
-                    |--> Multimodal Fusion --> Predictive Maintenance Output
-Text Embedding ------|
+technician-log CSV (requires log_id and text)
+  -> nlp/preprocessing.py (original and normalized text)
+  -> nlp/ner.py (rule-based entities and source offsets)
+  -> nlp/severity.py (unvalidated severity heuristic)
+  -> nlp/embeddings.py (DistilBERT, 768-D masked mean pooling)
+  -> processed logs, entities.jsonl, severity.csv, embeddings.pt, metadata
 ```
 
-The fusion model should be evaluated against the sensor-only baseline to determine whether technician logs improve predictive-maintenance performance.
+The checked-in five-log data is synthetic. Entity records carry their own
+`log_id`; canonical fusion validation rejects missing, unknown, or mismatched
+entity ownership. The embedding builder loads model/tokenizer assets with
+`from_pretrained` and may download them when invoked if they are not cached.
+The fixture tests replace only model inference with deterministic vectors.
 
-## IoT Integration
+## Fusion path
 
-The final system may include IoT-style integration using MQTT and InfluxDB.
+`training/fusion_dataset.py` joins sensor windows and log records by
+`(unit_id, cycle)`. It rejects duplicate sensor keys and log IDs, unmatched
+records, split inconsistencies, invalid dimensions, non-finite vectors, and
+invalid entity ownership. Shapes are `[64]` per sensor record and `[768]` per
+technician record. Multiple log embeddings may be mean-aggregated in sorted
+`log_id` order, while per-log ownership, entities, severity and source metadata
+remain in the result. Missing logs may use a zero vector plus `has_log=False`.
+These policy options must be selected explicitly and remain unapproved for
+production.
 
-Planned responsibilities:
+`models/multimodal_fusion.py` concatenates the 64-D and 768-D embeddings and
+uses an MLP to output one scalar. `has_log` inclusion is explicit. The output is
+an unconstrained RUL prediction. The training harness requires a genuine
+approval register and training authorization, but structural validation does
+not authenticate approvers or external evidence.
 
-- Simulate or ingest streaming sensor data.
-- Publish or subscribe to maintenance-relevant data using MQTT.
-- Store time-series readings in InfluxDB.
-- Demonstrate how the predictive-maintenance pipeline could operate in a real-world environment.
+## Artifact and security boundary
 
-This integration belongs to a later phase and should not affect the preprocessing design except through configurable paths and clean module boundaries.
+The baseline embedding loader hashes consumed sensor embedding bytes and checks
+an artifact-local index. The fusion adapter checks supplied artifact hash
+syntax and lineage fields, but it does not cryptographically bind a text vector
+to approved source bytes or authenticate approval evidence. Training consumes
+inline text vectors from JSON and records consumed-file hashes; a trusted,
+owner-approved binding from each vector/artifact to those bytes is not yet
+defined. The adapter's returned dict/tensors are mutable and have no signed or
+content-bound validation receipt. Do not use these mechanisms as a security
+boundary for genuine training until a reviewed trust and receipt design exists.
+
+## Infrastructure and deployment
+
+No broker client, time-series database client, document database client,
+Azure integration, deployment API, equipment configuration loader, or offline
+replay service exists in this checkout. There are no credentials or service
+configuration files. These capabilities require separate implementation,
+approved interfaces, and isolated service tests; no connectivity is implied by
+the model modules.
+
+## Evidence and blockers
+
+- Test suite and artifact verifiers exercise synthetic/interface behavior.
+- No approved genuine paired sensor-technician dataset or equipment mapping is
+  checked in.
+- Genuine cycle relationship, timestamp availability/cutoff, RUL horizon,
+  split assignments, missing/multiple-log policy and training authorization
+  remain pending.
+- Baseline checkpoint files are missing, and dependency pins describe only the
+  locally inspected environment.
+- No genuine fusion model has been trained or evaluated; no official FD001 test
+  evaluation is established by this repository state.

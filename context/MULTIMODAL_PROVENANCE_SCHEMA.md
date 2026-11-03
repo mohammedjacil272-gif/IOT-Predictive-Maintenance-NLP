@@ -38,7 +38,7 @@ permitted.
 | `late_arrival_policy` | PENDING | Must explicitly say whether an after-cutoff log is excluded or causes rejection. No default is selected. |
 | `checkpoint_lineage` | REQUIRED for a future genuine training run | Owner-supplied source checkpoint ID and SHA-256 when available; fusion training also requires the supplied checkpoint file and independently hashes it. Current frozen baseline checkpoint is missing locally. |
 | `operational_horizon` | REQUIRED configuration; **PENDING APPROVAL** | Explicit positive value and unit; the implementation supplies no default or production horizon. |
-| `entities` | OPTIONAL | If present on genuine logs, every entity must carry matching `log_id`, `unit_id`, `cycle`, and split provenance; missing or conflicting fields fail closed. Fixture entities remain synthetic. |
+| `entities` | OPTIONAL | If present, every canonical entity must carry its own non-empty `log_id` exactly matching its parent log; missing, unknown, or mismatched IDs fail closed in both namespaces. Genuine entities must also carry matching `unit_id`, `cycle`, and split provenance. Fixture entities remain synthetic. |
 | `severity_score`, `severity_label`, `matched_terms`, `explanation` | OPTIONAL | Existing per-log heuristic outputs. They are not ground-truth labels; preserve and validate provenance where supplied. |
 
 The fixture's `generation_rule_id` and `template_id` identify synthetic fixture

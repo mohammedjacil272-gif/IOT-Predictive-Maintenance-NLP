@@ -1,0 +1,9 @@
+# Versions observed in the Python 3.11.9 environment used for repository tests.
+# These pins are not a cross-platform compatibility guarantee.
+numpy==2.4.6
+pandas==3.0.6
+scikit-learn==1.9.1
+joblib==1.6.0
+torch==2.14.1
+transformers==5.19.0
+pytest==9.1.1

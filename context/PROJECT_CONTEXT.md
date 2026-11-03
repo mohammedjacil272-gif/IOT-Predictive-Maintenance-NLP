@@ -1,5 +1,11 @@
 # Project Context
 
+> This file records the original project proposal and phase sequence. It is not
+> a status report: the repository now contains sensor, NLP and synthetic fusion
+> code. For current implementation, interfaces, and blockers, see the root
+> [README](../README.md) and [architecture](ARCHITECTURE.md). In particular,
+> the statement below that Phase 1 is the active phase is historical.
+
 ## Project
 
 IoT + ML + NLP Based Multimodal Predictive Maintenance

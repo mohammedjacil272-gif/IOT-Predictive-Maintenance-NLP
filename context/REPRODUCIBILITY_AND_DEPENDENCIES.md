@@ -1,46 +1,66 @@
 # Reproducibility and Dependencies
 
+> Current checkout update (2026-11-01): the root `requirements.txt` captures
+> observed direct dependency pins for Python 3.11.9, but is not a complete
+> platform lock. Verification records later in this document are historical
+> snapshots for the source state and date they name; use the root README for
+> current safe commands and branch status.
+
 ## 1. Observed Environment
 
-The local virtual environment reported Python 3.13.7 during this review.
+The inspected local environment reported Python 3.11.9.
 
 | Package | Observed version | Use in this repository |
 |---|---|---|
 | PyTorch (`torch`) | 2.14.1 | Fusion model, tensor adapter, NLP embeddings, and tests |
-| NumPy | 2.5.4 | Metrics and preprocessing |
+| Transformers | 5.19.0 | NLP tokenizer and model loading |
+| NumPy | 2.4.6 | Metrics and preprocessing |
 | pandas | 3.0.6 | Sensor and artifact metadata handling |
 | pytest | 9.1.1 | Test runner |
 | scikit-learn | 1.9.1 | Baseline scaler and preprocessing |
 | joblib | 1.6.0 | Scaler artifact serialization |
 
-These versions are observations from the local worktree, not officially supported or locked dependency versions.
+These versions are the local environment observed on 2026-11-01 and are listed
+in the root `requirements.txt` to make that environment reproducible. They are
+not an approved cross-platform compatibility matrix.
 
 The test suite uses Python, pytest, PyTorch, NumPy, and pandas. Sensor preprocessing and baseline execution additionally use scikit-learn and joblib. The NLP artifact-generation pipeline also depends on Transformers and model assets. The checked-in fixture compatibility verifiers use saved embeddings and do not generate new embeddings.
 
-## 2. Dependency Manifest Gap
+## 2. Dependency Manifest and Remaining Reproducibility Gap
 
-No `requirements.txt`, `pyproject.toml`, `Pipfile`, Conda environment file, lockfile, or equivalent dependency manifest was found in the inspected repository root or tracked file inventory.
+The root `requirements.txt` now pins the observed direct runtime and test
+dependencies. It is not a full platform lock: Python itself, operating-system
+and accelerator-specific wheels, transitive dependencies, and model assets are
+not locked. Validate it in a clean supported environment before treating it as
+a deployment setup.
 
-The local `.venv` is environment state and is not a reproducible dependency declaration. No packages were installed or upgraded for this documentation review.
+The local `.venv` is environment state, not the dependency declaration. The
+manifest records observed versions; it has not been validated by installing
+into a clean environment.
 
 Recommended follow-up:
 
-1. Project owners should agree on supported Python and package versions.
-2. Add a minimal test/runtime dependency manifest and a lockfile or another version-pinning mechanism.
+1. Project owners should approve the supported Python/platform matrix.
+2. Generate and review a platform-appropriate lockfile if exact transitive
+   reproducibility is required.
 3. Validate the declared dependencies in a clean environment.
 
 Do not infer officially supported versions from the currently installed virtual environment.
 
 ## 3. Current Environment Workflow
 
-The local environment can be recreated at the Python-version level using PowerShell:
+The recorded environment was Python 3.13.7. The current checkout was observed
+under Python 3.11.9. Create an environment for the current pinned direct
+dependencies with PowerShell:
 
 ```powershell
-py -3.13 -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-Package installation is intentionally omitted until the project owners approve the dependency manifest and package versions.
+The requirements file has not been installed in a clean environment. Package
+compatibility outside the observed environment remains unverified.
 
 From the project root, the current validation commands are:
 

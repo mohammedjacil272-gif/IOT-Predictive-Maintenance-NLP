@@ -122,6 +122,20 @@ def test_missing_entity_log_id_is_rejected():
         build_fusion_samples([sensor(1, 1)], [text])
 
 
+@pytest.mark.parametrize("invalid_log_id", [None, "", "   ", 123])
+def test_invalid_entity_log_id_rejected(invalid_log_id):
+    text = log("parent-log", 1, 1, 2)
+    text["entities"] = [
+        {"log_id": invalid_log_id, "label": "SYMPTOM"}
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="Entity for log parent-log is missing a valid log_id",
+    ):
+        build_fusion_samples([sensor(1, 1)], [text])
+
+
 def test_entity_provenance_mismatch_rejected():
     first = log("log-1", 1, 1, 2)
     first["entities"] = [{"log_id": "log-2", "label": "SYMPTOM"}]

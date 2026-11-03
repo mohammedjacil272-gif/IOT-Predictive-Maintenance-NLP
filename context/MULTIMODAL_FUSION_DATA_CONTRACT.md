@@ -113,8 +113,11 @@ preprocessing lineage, and the four distinct timestamps. A log without a
 matching sensor key, a duplicate log ID, or a split mismatch is rejected.
 
 Optional fields currently accepted by the adapter are `entities`,
-`severity_score`, `severity_label`, `matched_terms`, and `explanation`. Supplied
-entity provenance is checked against its containing log; output provenance is
+`severity_score`, `severity_label`, `matched_terms`, and `explanation`. Each
+canonical entity must provide its own non-empty `log_id`; it must match the
+parent text record and cannot be inherited. Unknown or mismatched IDs fail
+closed in synthetic and genuine namespaces. Supplied unit/cycle/split
+provenance is checked against the parent and canonical window metadata is
 retained. Severity is optional and does not replace the RUL target. These
 optional fields do not establish source identity or point-in-time availability.
 
