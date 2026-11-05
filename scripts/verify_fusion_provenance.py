@@ -369,6 +369,7 @@ def main():
             "unit_id": row["unit_id"],
             "cycle": row["cycle"],
             "split": row["source_split"],
+            "namespace": "synthetic_fixture",
             "text_embedding": embeddings[int(row["row_index"])],
             "entities": entities_by_id[log_id],
             "severity_score": float(severity["severity_score"]),
@@ -385,6 +386,7 @@ def main():
             "unit_id": unit_id,
             "cycle": cycle,
             "split": split,
+            "namespace": "synthetic_fixture",
             "sensor_embedding": [0.1] * 64,
             "rul": 0.0,
         }
@@ -396,6 +398,7 @@ def main():
         "unit_id": 9999,
         "cycle": 9999,
         "split": "fixture",
+        "namespace": "synthetic_fixture",
         "sensor_embedding": [0.0] * 64,
         "rul": 0.0,
     })
@@ -477,7 +480,6 @@ def main():
         )
 
     print("PASS: Exact entity counts preserved in each fusion window")
-    
 
     if sum(
         len(items) for items in result["severity_by_log_by_window"]

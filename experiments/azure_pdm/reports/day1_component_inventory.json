@@ -1,0 +1,86 @@
+{
+  "repository": {
+    "branch": "feature/jacil-fusion-integration",
+    "head": "1b6770f106f34dae5b52e225fbef8813d02f33fc",
+    "classification": "simulated benchmark for Azure PdM; FD001 is a separate frozen benchmark"
+  },
+  "components": [
+    {
+      "name": "FD001 sensor validation and local replay",
+      "paths": ["iot/sensor_message.py", "iot/local_replay.py"],
+      "interface": "unit_id, cycle, 17 selected finite numeric sensor fields",
+      "status": "implemented_and_tested",
+      "scope": "FD001 only; cycle is not a wall-clock timestamp"
+    },
+    {
+      "name": "FD001 MQTT publisher",
+      "paths": ["iot/mqtt_publisher.py"],
+      "interface": "validated SensorMessage JSON on industrial/sensors by default",
+      "status": "implemented_and_mock_tested",
+      "scope": "FD001 replay; live broker not exercised"
+    },
+    {
+      "name": "FD001 MQTT to InfluxDB ingestion",
+      "paths": ["iot/influx_ingestion.py"],
+      "interface": "validated SensorMessage to fd001_sensor_reading point and query adapter",
+      "status": "implemented_and_mock_tested",
+      "scope": "FD001 cycle-derived synthetic storage time; not Azure telemetry"
+    },
+    {
+      "name": "FD001 LSTM inference",
+      "paths": ["iot/lstm_inference.py", "models/lstm_baseline.py"],
+      "interface": "30 consecutive cycles x 17 features -> RUL scalar",
+      "status": "implemented_but_runtime_regression_blocked",
+      "blocker": "best_model.pt is absent; protected checkpoint must not be regenerated"
+    },
+    {
+      "name": "NLP preprocessing, NER, severity",
+      "paths": ["nlp/preprocessing.py", "nlp/ner.py", "nlp/severity.py"],
+      "interface": "maintenance-log dict -> original/normalized text, entities, heuristic severity",
+      "status": "implemented_and_tested",
+      "scope": "synthetic/interface fixtures; not Azure technician narratives"
+    },
+    {
+      "name": "NLP embeddings",
+      "paths": ["nlp/embeddings.py"],
+      "interface": "text list -> frozen DistilBERT 768-D embeddings",
+      "status": "implemented_but_external_model_dependent",
+      "blocker": "requires transformers model/tokenizer availability and pinned external artifacts"
+    },
+    {
+      "name": "Fusion validation and alignment",
+      "paths": ["training/fusion_dataset.py", "training/fusion_provenance.py", "training/fusion_splits.py", "training/nlp_fusion_adapter.py", "training/nlp_fusion_pipeline.py"],
+      "interface": "canonical (unit_id, cycle), 64-D sensor + 768-D text, explicit namespace/provenance",
+      "status": "implemented_and_contract_tested",
+      "scope": "synthetic fixture/interface validation; genuine fusion blocked by approvals and availability"
+    },
+    {
+      "name": "Multimodal training contract compatibility",
+      "paths": ["training/train_multimodal.py", "tests/test_training_contract.py"],
+      "interface": "fail-closed record loader and TensorDataset builder",
+      "status": "restored_and_tested",
+      "scope": "no training entry point; main explicitly blocks unapproved training"
+    },
+    {
+      "name": "Azure PdM temporal dataset and model",
+      "paths": ["experiments/azure_pdm/feature_engineering.py", "experiments/azure_pdm/inference.py", "experiments/azure_pdm/streaming.py", "experiments/azure_pdm/demo.py"],
+      "interface": "machineID + timezone-naive hourly telemetry + approved metadata -> six-class prediction",
+      "status": "implemented_and_offline_replay_tested",
+      "scope": "Extra Trees benchmark model; failures target-only; errors/maintenance excluded"
+    }
+  ],
+  "integration_edges": [
+    {"from": "FD001 MQTT/Influx", "to": "FD001 LSTM", "status": "contract-compatible_but_checkpoint_missing"},
+    {"from": "NLP artifacts", "to": "fusion alignment", "status": "synthetic/interface-only; genuine availability and approvals required"},
+    {"from": "Azure telemetry replay", "to": "Azure Extra Trees inference", "status": "working_offline"},
+    {"from": "Azure structured events", "to": "Azure runtime features", "status": "blocked_by_unknown_availability"},
+    {"from": "FD001 fusion embeddings", "to": "Azure classifier", "status": "incompatible_and_intentionally_not_connected"}
+  ],
+  "test_status": {
+    "passing_relevant_suite": 185,
+    "warnings": 1,
+    "blocked": ["tests/test_lstm_inference.py::TestLSTMInference::test_frozen_artifacts_predict_without_live_services"],
+    "blocked_reason": "protected FD001 best_model.pt is absent",
+    "training_contract_collection": "repaired; 6 tests pass"
+  }
+}

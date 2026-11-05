@@ -1,10 +1,16 @@
+
 """Metadata-based fusion alignment with explicit, provisional policies."""
 
 from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from datetime import date, datetime
+import hashlib
+import json
 import re
+from types import MappingProxyType
+import weakref
 from typing import Any
 
 import torch
@@ -13,6 +19,7 @@ from training.fusion_provenance import (
     TIMESTAMP_FIELDS,
     validate_genuine_approval,
     validate_point_in_time,
+    validate_record_against_manifest,
 )
 
 
@@ -49,6 +56,45 @@ def _finite_vector(value: object, dimension: int, context: str) -> torch.Tensor:
     return tensor
 
 
+def _canonical_value(value: object) -> object:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, torch.Tensor):
+        return {
+            "dtype": str(value.dtype),
+            "shape": list(value.shape),
+            "values": value.detach().cpu().tolist(),
+        }
+    if hasattr(value, "dtype") and hasattr(value, "shape") and hasattr(value, "tolist"):
+        tensor = torch.as_tensor(value)
+        return {
+            "dtype": str(tensor.dtype),
+            "shape": list(tensor.shape),
+            "values": tensor.detach().cpu().tolist(),
+        }
+    if isinstance(value, Mapping):
+        return {str(key): _canonical_value(value[key]) for key in sorted(value, key=str)}
+    if isinstance(value, (list, tuple)):
+        return [_canonical_value(item) for item in value]
+    return value
+
+
+def canonical_content_digest(value: object) -> str:
+    payload = json.dumps(
+        _canonical_value(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def embedding_digest(value: object) -> str:
+    tensor = torch.as_tensor(value, dtype=torch.float32).detach().cpu().contiguous()
+    return canonical_content_digest({"embedding": tensor})
+
+
 def _validate_genuine_artifact_provenance(record: Mapping, context: str) -> None:
     required = (
         "source_dataset",
@@ -60,6 +106,7 @@ def _validate_genuine_artifact_provenance(record: Mapping, context: str) -> None
         "artifact_sha256",
         "embedding_model",
         "embedding_revision",
+        "artifact_path",
     )
     missing = [
         field for field in required
@@ -71,6 +118,132 @@ def _validate_genuine_artifact_provenance(record: Mapping, context: str) -> None
         )
     if not re.fullmatch(r"[0-9a-fA-F]{64}", record["artifact_sha256"]):
         raise ValueError(f"Genuine {context} artifact_sha256 must be a SHA-256 hex digest.")
+
+
+class _ValidationReceipt:
+    __slots__ = ("_manifest_id", "_content_digest", "_locked")
+
+    def __init__(self, manifest_id: str | None, content_digest: str) -> None:
+        object.__setattr__(self, "_manifest_id", manifest_id)
+        object.__setattr__(self, "_content_digest", content_digest)
+        object.__setattr__(self, "_locked", True)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_locked", False):
+            raise TypeError("Validation receipts are immutable.")
+        object.__setattr__(self, name, value)
+
+    @property
+    def manifest_id(self) -> str | None:
+        return self._manifest_id
+
+    @property
+    def content_digest(self) -> str:
+        return self._content_digest
+
+
+class _FrozenSequence(tuple):
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (list, tuple)):
+            return list(self) == list(other)
+        return NotImplemented
+
+
+class _FrozenTensor:
+    __slots__ = ("_values", "_dtype", "_shape", "_locked")
+
+    def __init__(self, value: torch.Tensor) -> None:
+        detached = value.detach().cpu().contiguous()
+        object.__setattr__(self, "_values", _freeze(detached.tolist()))
+        object.__setattr__(self, "_dtype", detached.dtype)
+        object.__setattr__(self, "_shape", tuple(detached.shape))
+        object.__setattr__(self, "_locked", True)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_locked", False):
+            raise TypeError("Validated tensors are immutable.")
+        object.__setattr__(self, name, value)
+
+    def materialize(self) -> torch.Tensor:
+        return torch.tensor(self._values, dtype=self._dtype).reshape(self._shape)
+
+
+def _freeze(value: object) -> object:
+    if isinstance(value, torch.Tensor):
+        return _FrozenTensor(value)
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return _FrozenSequence(_freeze(item) for item in value)
+    if isinstance(value, tuple):
+        return _FrozenSequence(_freeze(item) for item in value)
+    return value
+
+
+def validate_embedding_against_manifest(
+    record: Mapping,
+    embedding: torch.Tensor,
+    manifest: Mapping,
+    modality: str,
+) -> None:
+    artifact = manifest["artifacts"][record["artifact_id"]]
+    actual = embedding_digest(embedding)
+    if record.get("embedding_sha256") != actual:
+        raise ValueError(f"Genuine {modality} embedding digest does not match its values.")
+    by_record = artifact.get("embedding_sha256_by_source_record_id")
+    expected = (
+        by_record.get(record["source_record_id"])
+        if isinstance(by_record, Mapping)
+        else artifact.get("embedding_sha256")
+    )
+    if expected != actual:
+        raise ValueError(
+            f"Genuine {modality} embedding is not bound to the approved artifact record."
+        )
+
+
+class ValidatedFusionSamples(Mapping):
+    """Immutable samples returned only by the strict builder."""
+
+    __slots__ = ("_data", "_receipt", "_locked", "__weakref__")
+    __hash__ = object.__hash__
+
+    def __init__(self, data: Mapping, receipt: _ValidationReceipt | None = None) -> None:
+        if not isinstance(receipt, _ValidationReceipt):
+            raise TypeError("ValidatedFusionSamples must come from strict fusion validation.")
+        object.__setattr__(
+            self,
+            "_data",
+            MappingProxyType({key: _freeze(value) for key, value in data.items()}),
+        )
+        object.__setattr__(self, "_receipt", receipt)
+        object.__setattr__(self, "_locked", True)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_locked", False):
+            raise TypeError("Validated samples are immutable.")
+        object.__setattr__(self, name, value)
+
+    def __getitem__(self, key: str) -> object:
+        value = self._data[key]
+        return value.materialize() if isinstance(value, _FrozenTensor) else value
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    @property
+    def manifest_id(self) -> str | None:
+        return self._receipt.manifest_id
+
+    @property
+    def content_digest(self) -> str:
+        return self._receipt.content_digest
+
+
+_VALIDATED_INSTANCES: dict[int, weakref.ReferenceType] = {}
 
 
 SENSOR_PROVENANCE_FIELDS = (
@@ -124,6 +297,7 @@ def build_fusion_samples(
     genuine_approval: Mapping | None = None,
     point_in_time_policy: Mapping | None = None,
     prediction_cutoff: object | None = None,
+    has_log_feature: str | None = None,
 ) -> dict[str, Any]:
     """Join by canonical `(unit_id, cycle)` metadata, never record position.
 
@@ -148,12 +322,41 @@ def build_fusion_samples(
             f"Sensor/text namespace mismatch: {namespace!r} vs {text_namespace!r}."
         )
     is_genuine = namespace == "genuine" or namespace.startswith("genuine:")
+    approved_manifest = None
     if is_genuine:
-        validate_genuine_approval(genuine_approval)
+        approved_manifest = validate_genuine_approval(genuine_approval)
         if point_in_time_policy is None or not isinstance(prediction_cutoff, Mapping):
             raise ValueError(
                 "Genuine-data use is blocked without an approved point-in-time policy and per-window cutoffs."
             )
+        # Validate supplied text artifacts before comparing runtime policy
+        # settings.  A policy mismatch must not provide a way to hide a
+        # malformed embedding in a record that would later be excluded by a
+        # cutoff.
+        for record in text_records:
+            required = {"text_embedding", "namespace"}
+            missing = required - record.keys()
+            if missing:
+                raise ValueError(f"Text record is missing fields: {sorted(missing)}")
+            _validate_genuine_artifact_provenance(record, "technician-log")
+            record_manifest = validate_record_against_manifest(
+                record, approval=genuine_approval, modality="text"
+            )
+            embedding = _finite_vector(record["text_embedding"], 768, "Text")
+            validate_embedding_against_manifest(record, embedding, record_manifest, "text")
+        approved_policies = genuine_approval.get("fusion_policies", {})
+        if (
+            not isinstance(approved_policies, Mapping)
+            or approved_policies.get("missing_log") != missing_log_policy
+            or approved_policies.get("multiple_logs") != multiple_log_policy
+            or (
+                prediction_cutoff
+                and genuine_approval.get("prediction_cutoff") != prediction_cutoff
+            )
+            or has_log_feature not in {"include", "exclude"}
+            or genuine_approval.get("has_log_feature") != has_log_feature
+        ):
+            raise ValueError("Runtime fusion policies or prediction cutoffs do not match approval.")
 
     sensor_by_key: dict[tuple[int, int], dict[str, Any]] = {}
     split_by_unit: dict[int, str] = {}
@@ -164,6 +367,9 @@ def build_fusion_samples(
             raise ValueError(f"Sensor record is missing fields: {sorted(missing)}")
         if is_genuine:
             _validate_genuine_artifact_provenance(record, "sensor")
+            record_manifest = validate_record_against_manifest(
+                record, approval=genuine_approval, modality="sensor"
+            )
             if (
                 not isinstance(record.get("window_start_cycle"), int)
                 or not isinstance(record.get("window_end_cycle"), int)
@@ -189,6 +395,8 @@ def build_fusion_samples(
         if key in sensor_by_key:
             raise ValueError(f"Duplicate sensor equipment/cycle pair: {key}")
         embedding = _finite_vector(record["sensor_embedding"], 64, "Sensor")
+        if is_genuine:
+            validate_embedding_against_manifest(record, embedding, record_manifest, "sensor")
         try:
             if isinstance(record["rul"], bool):
                 raise TypeError
@@ -199,6 +407,16 @@ def build_fusion_samples(
             raise ValueError(f"Non-finite supplied RUL for {key}.")
         if rul < 0:
             raise ValueError(f"Supplied RUL must be non-negative for {key}.")
+        if is_genuine:
+            sensor_times = validate_point_in_time(
+                record,
+                cutoff=_window_cutoff(prediction_cutoff, key),
+                policy=point_in_time_policy,
+            )
+            if sensor_times["eligible"] is False:
+                raise ValueError(f"Sensor availability is after prediction cutoff for {key}.")
+        else:
+            sensor_times = {field: record.get(field) for field in TIMESTAMP_FIELDS}
         sensor_by_key[key] = {
             "embedding": embedding,
             "rul": rul,
@@ -206,6 +424,7 @@ def build_fusion_samples(
             "provenance": {
                 field: record.get(field) for field in SENSOR_PROVENANCE_FIELDS
             },
+            "timestamps": sensor_times,
         }
 
     if not sensor_by_key:
@@ -224,6 +443,9 @@ def build_fusion_samples(
             raise ValueError(f"Text record is missing fields: {sorted(missing)}")
         if is_genuine:
             _validate_genuine_artifact_provenance(record, "technician-log")
+            record_manifest = validate_record_against_manifest(
+                record, approval=genuine_approval, modality="text"
+            )
         unit_id, cycle = record["unit_id"], record["cycle"]
         if not isinstance(unit_id, int) or isinstance(unit_id, bool) or unit_id <= 0:
             raise ValueError(f"Text unit_id must be a positive integer: {unit_id!r}")
@@ -325,6 +547,13 @@ def build_fusion_samples(
                 continue
         else:
             parsed_times = {field: record.get(field) for field in TIMESTAMP_FIELDS}
+
+        embedding = _finite_vector(record["text_embedding"], 768, "Text")
+
+        if is_genuine:
+            validate_embedding_against_manifest(
+                record, embedding, record_manifest, "text"
+            )
 
         entities = record.get("entities") or []
         if not isinstance(entities, Sequence) or isinstance(entities, (str, bytes)):
@@ -430,7 +659,11 @@ def build_fusion_samples(
             }
             for log in logs
         ])
-        scores = [log["severity"]["severity_score"] for log in logs if log["severity"]["severity_score"] is not None]
+        scores = [
+            log["severity"]["severity_score"]
+            for log in logs
+            if log["severity"]["severity_score"] is not None
+        ]
         window_severity.append(max(scores) if scores else None)
         if logs:
             text_vectors.append(torch.stack([log["embedding"] for log in logs]).mean(0))
@@ -439,8 +672,9 @@ def build_fusion_samples(
             text_vectors.append(torch.zeros(768, dtype=torch.float32))
             has_logs.append(False)
 
-    return {
+    sample_data = {
         "namespace": namespace,
+        "approved_has_log_feature": has_log_feature,
         "excluded_logs": excluded_logs,
         "unit_id": torch.tensor([key[0] for key in keys]),
         "cycle": torch.tensor([key[1] for key in keys]),
@@ -457,4 +691,15 @@ def build_fusion_samples(
         "source_ids_by_window": source_ids_by_window,
         "sensor_provenance_by_window": sensor_provenance_by_window,
         "window_severity": window_severity,
+        "sensor_timestamps_by_window": [sensor_by_key[key]["timestamps"] for key in keys],
     }
+    manifest_id = approved_manifest.get("manifest_id") if approved_manifest is not None else None
+    result = ValidatedFusionSamples(
+        sample_data,
+        _ValidationReceipt(
+            manifest_id,
+            canonical_content_digest({"manifest_id": manifest_id, "samples": sample_data}),
+        ),
+    )
+    _VALIDATED_INSTANCES[id(result)] = weakref.ref(result)
+    return result

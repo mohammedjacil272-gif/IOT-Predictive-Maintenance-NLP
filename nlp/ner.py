@@ -63,12 +63,13 @@ ENTITY_RULES = {
 
 # Matches simple numeric measurements, such as 95°C, 42 PSI or 12.5 bar.
 MEASUREMENT_PATTERN = re.compile(
+    # A leading minus is supported; a plus sign is intentionally treated as
+    # malformed input so signed-positive semantics remain unambiguous.
     r"(?<![\w+-])(?<![+-]\s)-?\d+(?:\.\d+)?\s*"
     r"(?:°\s*[CF]|psi|bar|kpa|mpa|rpm|mm|cm|m|"
     r"kg|g|%|pa)\b",
     re.IGNORECASE,
 )
-
 
 def extract_entities(
     text: str,

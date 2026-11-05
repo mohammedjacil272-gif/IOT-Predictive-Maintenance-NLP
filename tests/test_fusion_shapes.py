@@ -1,4 +1,5 @@
-﻿import pytest
+
+import pytest
 import torch
 
 from models.multimodal_fusion import MultimodalFusionModel
@@ -74,8 +75,27 @@ def test_has_log_feature_selection_is_explicit():
     model = MultimodalFusionModel(use_has_log=True)
     sensor = torch.randn(2, 64)
     text = torch.randn(2, 768)
+
     with pytest.raises(ValueError, match="has_log must have shape"):
         model(sensor, text)
+
     result = model(sensor, text, has_log=torch.tensor([True, False]))
+
     assert result.shape == (2,)
     assert torch.isfinite(result).all()
+
+
+@pytest.mark.parametrize("invalid", [None, 1, "false", object()])
+def test_has_log_policy_requires_a_boolean(invalid):
+    with pytest.raises(ValueError, match="explicitly as a boolean"):
+        MultimodalFusionModel(use_has_log=invalid)
+
+
+def test_fusion_verifier_is_forward_only():
+    from pathlib import Path
+
+    source = Path("scripts/verify_fusion.py").read_text()
+
+    assert "torch.optim" not in source
+    assert ".backward(" not in source
+    assert ".step(" not in source

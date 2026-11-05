@@ -143,6 +143,7 @@ def main():
                 "unit_id": int(row["unit_id"]),
                 "cycle": int(row["cycle"]),
                 "split": source_split,
+                "namespace": "synthetic_fixture",
                 "text_embedding": embeddings[row_index],
                 "entities": [],
                 "severity_score": float(
@@ -203,6 +204,7 @@ def main():
                 "unit_id": record["unit_id"],
                 "cycle": record["cycle"],
                 "split": "fixture",
+                "namespace": "synthetic_fixture",
                 "sensor_embedding": [0.1] * 64,
                 "rul": 0.0,
             }
@@ -214,6 +216,8 @@ def main():
     result = build_fixture_samples(
         sensor_records,
         text_records,
+        missing_log_policy="zero_vector",
+        multiple_log_policy="mean_sorted_log_id",
     )
 
     assert result["sensor_embeddings"].shape == (
@@ -274,6 +278,8 @@ def main():
         lambda: build_fixture_samples(
             sensor_records,
             bad_text,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
         ),
     )
 
@@ -292,6 +298,8 @@ def main():
         lambda: build_fixture_samples(
             sensor_records,
             bad_metadata,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
         ),
     )
 
@@ -323,11 +331,26 @@ def main():
         build_fixture_samples(
             sensor_records,
             fabricated_split,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
         )
 
     expect_failure(
         "Fabricated FD001 validation split mapping is rejected",
         reject_fabricated_mapping,
+    )
+
+    def builder_rejects_fabricated_mapping():
+        build_fusion_samples(
+            sensor_records,
+            fabricated_split,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+        )
+
+    expect_failure(
+        "Strict fusion builder rejects fabricated validation metadata",
+        builder_rejects_fabricated_mapping,
     )
 
     # ---------------------------------------------------------
