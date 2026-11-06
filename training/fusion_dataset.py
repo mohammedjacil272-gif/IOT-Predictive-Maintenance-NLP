@@ -259,6 +259,25 @@ LOG_PROVENANCE_FIELDS = (
 )
 
 
+class UnmatchedTextRecordsError(ValueError):
+    """Fail-closed error carrying every text record without a sensor key."""
+
+    def __init__(self, records: Sequence[Mapping[str, Any]]) -> None:
+        self.unmatched_records = tuple(dict(record) for record in records)
+        details = [
+            {
+                "log_id": record.get("log_id"),
+                "unit_id": record.get("unit_id"),
+                "cycle": record.get("cycle"),
+                "split": record.get("split"),
+                "source_system": record.get("source_system"),
+                "source_record_id": record.get("source_record_id"),
+            }
+            for record in self.unmatched_records
+        ]
+        super().__init__(f"Text records have no matching sensor window: {details}")
+
+
 def _window_cutoff(cutoff: object, key: tuple[int, int]) -> object:
     """Resolve a required cutoff for one prediction window."""
     if isinstance(cutoff, Mapping):
@@ -310,6 +329,21 @@ def build_fusion_samples(
             raise ValueError(
                 "Genuine-data use is blocked without an approved point-in-time policy and per-window cutoffs."
             )
+        # Validate supplied text artifacts before comparing runtime policy
+        # settings.  A policy mismatch must not provide a way to hide a
+        # malformed embedding in a record that would later be excluded by a
+        # cutoff.
+        for record in text_records:
+            required = {"text_embedding", "namespace"}
+            missing = required - record.keys()
+            if missing:
+                raise ValueError(f"Text record is missing fields: {sorted(missing)}")
+            _validate_genuine_artifact_provenance(record, "technician-log")
+            record_manifest = validate_record_against_manifest(
+                record, approval=genuine_approval, modality="text"
+            )
+            embedding = _finite_vector(record["text_embedding"], 768, "Text")
+            validate_embedding_against_manifest(record, embedding, record_manifest, "text")
         approved_policies = genuine_approval.get("fusion_policies", {})
         if (
             not isinstance(approved_policies, Mapping)
@@ -401,6 +435,7 @@ def build_fusion_samples(
     seen_source_ids: set[tuple[str, str]] = set()
     source_system_by_id: dict[str, str] = {}
     excluded_logs: list[dict[str, Any]] = []
+    unmatched_text_records: list[dict[str, Any]] = []
     for record in text_records:
         required = {"log_id", "unit_id", "cycle", "split", "text_embedding", "namespace"}
         missing = required - record.keys()
@@ -422,10 +457,6 @@ def build_fusion_samples(
         if split != split.strip():
             raise ValueError(f"Text split contains surrounding whitespace for {(unit_id, cycle)}.")
         key = (unit_id, cycle)
-        if key not in sensor_by_key:
-            raise ValueError(f"Text record has no matching sensor window: {key}")
-        if split != sensor_by_key[key]["split"]:
-            raise ValueError(f"Split mismatch for {key}")
         log_id = record["log_id"]
         if not isinstance(log_id, str) or not log_id.strip():
             raise ValueError("Text record has a missing or empty log_id.")
@@ -434,8 +465,13 @@ def build_fusion_samples(
             raise ValueError(f"Duplicate log_id: {log_id}")
         seen_log_ids.add(log_id)
 
+        # Validate every supplied vector, including records later excluded by
+        # cutoff or rejected as unmatched, so malformed artifact rows cannot
+        # hide behind eligibility filtering.
+        embedding = _finite_vector(record["text_embedding"], 768, "Text")
+
         if is_genuine:
-            for field in ("source_system", "source_record_id", *TIMESTAMP_FIELDS):
+            for field in ("source_system", "source_record_id"):
                 if field not in record or record[field] in (None, ""):
                     raise ValueError(f"Genuine text record is missing {field}.")
             if not isinstance(record["source_system"], str) or not isinstance(
@@ -457,6 +493,34 @@ def build_fusion_samples(
                     f"{previous_system!r} and {source_key[0]!r}."
                 )
             seen_source_ids.add(source_key)
+
+        if key not in sensor_by_key:
+            unmatched_text_records.append({
+                "log_id": log_id,
+                "unit_id": unit_id,
+                "cycle": cycle,
+                "split": split,
+                "source_system": record.get("source_system"),
+                "source_record_id": record.get("source_record_id"),
+                "raw_timestamps": {
+                    field: record.get(field) for field in TIMESTAMP_FIELDS
+                },
+                "source_provenance": {
+                    field: record.get(field) for field in LOG_PROVENANCE_FIELDS
+                },
+                "record_metadata": {
+                    field: value for field, value in record.items()
+                    if field != "text_embedding"
+                },
+            })
+            continue
+        if split != sensor_by_key[key]["split"]:
+            raise ValueError(f"Split mismatch for {key}")
+
+        if is_genuine:
+            for field in TIMESTAMP_FIELDS:
+                if field not in record or record[field] in (None, ""):
+                    raise ValueError(f"Genuine text record is missing {field}.")
             parsed_times = validate_point_in_time(
                 record,
                 cutoff=_window_cutoff(prediction_cutoff, key),
@@ -485,8 +549,12 @@ def build_fusion_samples(
             parsed_times = {field: record.get(field) for field in TIMESTAMP_FIELDS}
 
         embedding = _finite_vector(record["text_embedding"], 768, "Text")
+
         if is_genuine:
-            validate_embedding_against_manifest(record, embedding, record_manifest, "text")
+            validate_embedding_against_manifest(
+                record, embedding, record_manifest, "text"
+            )
+
         entities = record.get("entities") or []
         if not isinstance(entities, Sequence) or isinstance(entities, (str, bytes)):
             raise ValueError(f"Entities for log {log_id} must be a sequence.")
@@ -496,6 +564,19 @@ def build_fusion_samples(
             if not isinstance(entity, Mapping):
                 raise ValueError(f"Each entity for log {log_id} must be a mapping.")
             item = dict(entity)
+            entity_log_id = item.get("log_id")
+            if not isinstance(entity_log_id, str) or not entity_log_id.strip():
+                if is_genuine:
+                    raise ValueError(
+                        f"Genuine entity for log {log_id} is missing provenance: ['log_id']"
+                    )
+                raise ValueError(
+                    f"Entity for log {log_id} is missing a valid log_id."
+                )
+            if entity_log_id != log_id:
+                raise ValueError(
+                    f"Entity provenance mismatch for log {log_id}: log_id"
+                )
             if is_genuine:
                 missing_entity_provenance = {
                     "log_id", "unit_id", "cycle", "split"
@@ -506,6 +587,8 @@ def build_fusion_samples(
                         f"{sorted(missing_entity_provenance)}"
                     )
             for field, expected_value in expected.items():
+                if field == "log_id":
+                    continue
                 if field in item and item[field] != expected_value:
                     raise ValueError(f"Entity provenance mismatch for log {log_id}: {field}")
                 item[field] = expected_value
@@ -539,6 +622,9 @@ def build_fusion_samples(
                 field: record.get(field) for field in LOG_PROVENANCE_FIELDS
             },
         })
+
+    if unmatched_text_records:
+        raise UnmatchedTextRecordsError(unmatched_text_records)
 
     keys = sorted(sensor_by_key)
     sensor_vectors, text_vectors, targets, has_logs, splits = [], [], [], [], []

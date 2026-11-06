@@ -71,7 +71,6 @@ MEASUREMENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-
 def extract_entities(
     text: str,
     log_id: Any = None,

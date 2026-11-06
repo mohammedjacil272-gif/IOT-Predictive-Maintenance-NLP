@@ -582,6 +582,32 @@ def test_late_log_is_excluded_but_sensor_window_is_retained():
     assert result["excluded_logs"][0]["log_id"] == "record-a"
 
 
+@pytest.mark.parametrize(
+    "invalid_embedding",
+    [
+        [float("nan")] + [0.0] * 767,
+        [float("inf")] + [0.0] * 767,
+        [0.0] * 767,
+    ],
+    ids=("nan", "infinity", "wrong-dimension"),
+)
+def test_cutoff_excluded_log_embedding_is_still_validated(invalid_embedding):
+    sensor, logs = genuine_rows()
+    logs[0]["availability_time"] = "2025-02-01T12:00:00Z"
+    logs[0]["text_embedding"] = invalid_embedding
+
+    with pytest.raises(ValueError, match="Non-finite Text|Text embedding must have 768"):
+        build_fusion_samples(
+            sensor,
+            logs,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
+            genuine_approval=approved(),
+            point_in_time_policy=time_policy(late_arrival_policy="exclude"),
+            prediction_cutoff={(17, 9): "2025-02-01T11:00:00Z"},
+        )
+
+
 def test_cutoff_is_applied_before_deterministic_multiple_log_aggregation():
     sensor, logs = genuine_rows()
     first = dict(logs[0], log_id="log-b", source_record_id="source-b")

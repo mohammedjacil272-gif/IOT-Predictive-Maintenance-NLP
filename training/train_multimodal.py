@@ -395,8 +395,12 @@ def make_dataset(samples, split_name: str, *, use_has_log: bool) -> TensorDatase
     return TensorDataset(*tensors)
 
 
+
 def main() -> None:
-    raise RuntimeError("Multimodal training is intentionally blocked; use the approved contract before adding a training entry point.")
+    raise RuntimeError(
+        "Multimodal training is intentionally blocked; "
+        "use the approved contract before adding a training entry point."
+    )
 
 
 if __name__ == "__main__":

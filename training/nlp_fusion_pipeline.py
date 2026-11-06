@@ -1,4 +1,3 @@
-
 """Enforced synthetic NLP-artifact to fusion orchestration boundary."""
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ def build_validated_fusion_samples(
     genuine_approval: Mapping | None = None,
     point_in_time_policy: Mapping | None = None,
     prediction_cutoff: object | None = None,
+
     has_log_feature: str | None = None,
 ) -> dict[str, Any]:
     """Validate NLP artifacts before adapting or joining them with sensors.
