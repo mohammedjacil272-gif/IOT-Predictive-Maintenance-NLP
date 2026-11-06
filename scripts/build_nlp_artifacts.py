@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -11,6 +12,9 @@ import torch
 
 # Make project-root imports work when this script is run directly.
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PACKAGE_DIR = ROOT / "artifacts" / "fd001_nlp_fixture"
+DEFAULT_DATA_DIR = DEFAULT_PACKAGE_DIR / "data"
+DEFAULT_EMBEDDING_DIR = DEFAULT_PACKAGE_DIR / "embeddings"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -57,18 +61,110 @@ def write_csv(path, rows, fieldnames):
         writer.writerows(rows)
 
 
+def write_artifact_manifest(package_dir, payload_paths):
+    """Write caller-asserted synthetic classification and payload byte hashes.
+
+    The caller's synthetic classification is an assertion, not independent
+    proof of source origin or genuine-data authenticity.
+    """
+    package_dir = Path(package_dir)
+    expected_paths = {
+        "embeddings/embeddings.pt",
+        "embeddings/embedding_metadata.csv",
+        "data/processed_logs.csv",
+        "data/entities.jsonl",
+        "data/severity.csv",
+        "data/verification_report.json",
+    }
+    files = {}
+    for path in payload_paths:
+        path = Path(path)
+        try:
+            relative_path = path.relative_to(package_dir).as_posix()
+        except ValueError as exc:
+            raise ValueError("Manifest payload paths must be inside the package root.") from exc
+        if relative_path in files:
+            raise ValueError(f"Duplicate manifest payload path: {relative_path}")
+        if relative_path not in expected_paths:
+            raise ValueError(f"Unexpected or incorrectly located manifest payload: {relative_path}")
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"Manifest payload must be a regular file: {relative_path}")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        files[relative_path] = {"sha256": digest}
+
+    missing_paths = expected_paths - files.keys()
+    if missing_paths:
+        raise ValueError(f"Missing manifest payload paths: {sorted(missing_paths)}")
+
+    manifest = {
+        "dataset_type": "synthetic_fixture",
+        "files": files,
+    }
+    manifest_path = package_dir / "artifact_manifest.json"
+    if manifest_path.exists():
+        raise FileExistsError(
+            f"Refusing to overwrite existing artifact manifest: {manifest_path}"
+        )
+    # Exclusive creation also protects against a manifest appearing after the
+    # explicit preflight check above.
+    with manifest_path.open("x", encoding="utf-8") as file:
+        json.dump(manifest, file, indent=2, ensure_ascii=False, sort_keys=True)
+        file.write("\n")
+
+
 def build(
     input_path,
     data_dir,
     embedding_dir,
+    *,
+    dataset_type,
     batch_size=8,
-    dataset_type="synthetic_fixture",
 ):
-    """Build row-aligned NLP artifacts and preserve per-log provenance."""
+    """Build row-aligned NLP artifacts after caller asserts fixture origin.
+
+    ``dataset_type='synthetic_fixture'`` is a caller assertion required to
+    create a synthetic manifest; it does not independently prove data origin.
+    """
     if batch_size < 1:
         raise ValueError("batch_size must be at least 1")
+    if dataset_type != "synthetic_fixture":
+        raise ValueError(
+            "Manifest generation is supported only for synthetic_fixture data."
+        )
+
+    data_dir = Path(data_dir)
+    embedding_dir = Path(embedding_dir)
+    if data_dir.name != "data" or embedding_dir.name != "embeddings":
+        raise ValueError(
+            "Artifact output directories must be package-root data/ and embeddings/."
+        )
+    if data_dir.parent.resolve() != embedding_dir.parent.resolve():
+        raise ValueError(
+            "data/ and embeddings/ must share one package root."
+        )
+    package_dir = data_dir.parent
+
+    expected_outputs = [
+        package_dir / "artifact_manifest.json",
+        embedding_dir / "embeddings.pt",
+        embedding_dir / "embedding_metadata.csv",
+        data_dir / "processed_logs.csv",
+        data_dir / "entities.jsonl",
+        data_dir / "severity.csv",
+        data_dir / "verification_report.json",
+    ]
+    collisions = [path for path in expected_outputs if path.exists()]
+    if collisions:
+        raise FileExistsError(
+            "Refusing to overwrite existing NLP artifact package files: "
+            + ", ".join(str(path) for path in collisions)
+        )
 
     logs = read_logs(input_path)
+    if any(row.get("source_split") != "fixture" for row in logs):
+        raise ValueError(
+            "Synthetic artifact inputs must use source_split='fixture'."
+        )
     print(f"Loaded {len(logs)} logs from {input_path}")
 
     # 1. Normalize text while preserving original input fields.
@@ -233,9 +329,8 @@ def build(
         },
         "official_test_evaluation_performed": False,
         "limitations": [
-            "Input data is a synthetic fixture."
-            if dataset_type == "synthetic_fixture"
-            else "Dataset classification was supplied by the caller.",
+            "Synthetic-fixture classification is asserted by the caller and is not independent proof of data origin.",
+            "No genuine-data authenticity or training claim is made.",
             "Severity values are heuristic, not ground truth.",
             "Rule-based NER has not been evaluated on labeled real logs.",
         ],
@@ -245,6 +340,17 @@ def build(
         "w", encoding="utf-8"
     ) as file:
         json.dump(report, file, indent=2, ensure_ascii=False)
+
+    # Hash the finalized payload bytes only after every package file has been
+    # written successfully. The manifest itself is not self-hashed.
+    write_artifact_manifest(package_dir, [
+        embedding_dir / "embeddings.pt",
+        embedding_dir / "embedding_metadata.csv",
+        data_dir / "processed_logs.csv",
+        data_dir / "entities.jsonl",
+        data_dir / "severity.csv",
+        data_dir / "verification_report.json",
+    ])
 
     print("\nPipeline completed successfully.")
     print(f"Dataset type: {dataset_type}")
@@ -266,19 +372,19 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument(
         "--data-dir",
-        default="artifacts/data/fd001_nlp_fixture",
+        default=str(DEFAULT_DATA_DIR),
         help="Directory for processed logs, entities, severity, and reports",
     )
     parser.add_argument(
         "--embedding-dir",
-        default="artifacts/embeddings/fd001_nlp_fixture",
+        default=str(DEFAULT_EMBEDDING_DIR),
         help="Directory for embeddings and embedding metadata",
     )
     parser.add_argument(
         "--dataset-type",
-        choices=("synthetic_fixture", "approved_real"),
-        default="synthetic_fixture",
-        help="Dataset classification recorded in the report",
+        choices=("synthetic_fixture",),
+        required=True,
+        help="Explicitly assert synthetic-fixture origin (not independently verified)",
     )
     args = parser.parse_args()
 
@@ -302,6 +408,6 @@ if __name__ == "__main__":
         input_path,
         data_dir,
         embedding_dir,
-        args.batch_size,
-        args.dataset_type,
+        dataset_type=args.dataset_type,
+        batch_size=args.batch_size,
     )
