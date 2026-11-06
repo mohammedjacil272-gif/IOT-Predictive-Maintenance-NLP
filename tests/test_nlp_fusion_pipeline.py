@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from scripts import build_nlp_artifacts as builder
 import training.nlp_fusion_pipeline as pipeline
 from training.nlp_artifact_validation import validate_nlp_artifact_package
 
@@ -100,6 +101,134 @@ def test_valid_synthetic_package_reaches_adapter_and_preserves_provenance(tmp_pa
     assert result["samples"]["log_ids_by_window"] == [["log-0"]]
     assert result["samples"]["entities_by_window"][0][0]["log_id"] == "log-0"
     assert result["samples"]["text_embeddings"].shape == (1, 768)
+
+
+def test_builder_package_reaches_fusion_pipeline_with_metadata_alignment(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        builder,
+        "preprocess_logs",
+        lambda rows: [
+            {**row, "original_text": row["text"], "normalized_text": row["text"].lower()}
+            for row in rows
+        ],
+    )
+    monkeypatch.setattr(
+        builder,
+        "extract_entities",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        builder,
+        "score_severity",
+        lambda _text: {
+            "severity_score": 1,
+            "severity_label": "low",
+            "matched_terms": [],
+            "explanation": "deterministic fixture stub",
+        },
+    )
+
+    class Embedder:
+        def encode(self, texts):
+            values = {"alpha note": 11.0, "beta note": 22.0}
+            return torch.stack([
+                torch.full((768,), values[text], dtype=torch.float32)
+                for text in texts
+            ])
+
+    monkeypatch.setattr(builder, "TextEmbedder", Embedder)
+
+    input_path = tmp_path / "technician_logs.csv"
+    with input_path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=["log_id", "unit_id", "cycle", "text", "source_split"],
+        )
+        writer.writeheader()
+        # Deliberately put beta first; fusion sensor rows use the opposite order.
+        writer.writerows([
+            {
+                "log_id": "beta-log",
+                "unit_id": "2",
+                "cycle": "7",
+                "text": "beta note",
+                "source_split": "fixture",
+            },
+            {
+                "log_id": "alpha-log",
+                "unit_id": "1",
+                "cycle": "3",
+                "text": "alpha note",
+                "source_split": "fixture",
+            },
+        ])
+
+    package_dir = tmp_path / "synthetic_package"
+    builder.build(
+        input_path,
+        package_dir / "data",
+        package_dir / "embeddings",
+        dataset_type="synthetic_fixture",
+    )
+
+    validation = validate_nlp_artifact_package(package_dir)
+    assert validation["status"] == "PASS"
+    assert validation["genuine_data_claim"] is False
+
+    adapter_validation_statuses = []
+    original_adapter = pipeline.adapt_nlp_embedding_metadata
+
+    def assert_validated_then_adapt(*args, **kwargs):
+        adapter_validation_statuses.append(
+            validate_nlp_artifact_package(package_dir)["status"]
+        )
+        return original_adapter(*args, **kwargs)
+
+    monkeypatch.setattr(
+        pipeline, "adapt_nlp_embedding_metadata", assert_validated_then_adapt
+    )
+    sensors = [
+        {
+            "unit_id": 1,
+            "cycle": 3,
+            "split": "fixture",
+            "sensor_embedding": [1.0] * 64,
+            "rul": 97.0,
+            "namespace": "synthetic_fixture",
+        },
+        {
+            "unit_id": 2,
+            "cycle": 7,
+            "split": "fixture",
+            "sensor_embedding": [2.0] * 64,
+            "rul": 93.0,
+            "namespace": "synthetic_fixture",
+        },
+    ]
+
+    result = pipeline.build_validated_fusion_samples(
+        package_dir,
+        sensors,
+        missing_log_policy="error",
+        multiple_log_policy="error",
+    )
+
+    samples = result["samples"]
+    assert adapter_validation_statuses == ["PASS"]
+    assert result["validation"]["status"] == "PASS"
+    assert result["validation"]["genuine_data_claim"] is False
+    assert samples["unit_id"].tolist() == [1, 2]
+    assert samples["cycle"].tolist() == [3, 7]
+    assert samples["split"] == ("fixture", "fixture")
+    assert samples["log_ids_by_window"] == [["alpha-log"], ["beta-log"]]
+    # The deterministic fixture extractor returns no entities, so the pipeline
+    # must preserve that absence without inventing entity ownership.
+    assert samples["entities_by_window"] == [[], []]
+    assert samples["text_embeddings"][:, 0].tolist() == [11.0, 22.0]
+    assert torch.all(samples["text_embeddings"][0] == 11.0)
+    assert torch.all(samples["text_embeddings"][1] == 22.0)
 
 
 def test_invalid_package_never_reaches_adapter(tmp_path, monkeypatch):
