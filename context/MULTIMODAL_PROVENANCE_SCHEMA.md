@@ -38,7 +38,7 @@ permitted.
 | `late_arrival_policy` | PENDING | Must explicitly say whether an after-cutoff log is excluded or causes rejection. No default is selected. |
 | `checkpoint_lineage` | REQUIRED for a future genuine training run | Owner-supplied source checkpoint ID and SHA-256 when available; fusion training also requires the supplied checkpoint file and independently hashes it. Current frozen baseline checkpoint is missing locally. |
 | `operational_horizon` | REQUIRED configuration; **PENDING APPROVAL** | Explicit positive value and unit; the implementation supplies no default or production horizon. |
-| `entities` | OPTIONAL | If present on genuine logs, every entity must carry matching `log_id`, `unit_id`, `cycle`, and split provenance; missing or conflicting fields fail closed. Fixture entities remain synthetic. |
+| `entities` | OPTIONAL | Whenever present in either namespace, each entity must carry its own non-empty `log_id` exactly matching its parent text record; ownership is never inherited, and missing or nonmatching IDs fail closed. Genuine entity records additionally require matching `unit_id`, `cycle`, and split values. Source, artifact, and timestamp provenance requirements apply to the parent genuine log record, not to every entity. Fixture values remain synthetic and do not establish genuine lineage. |
 | `severity_score`, `severity_label`, `matched_terms`, `explanation` | OPTIONAL | Existing per-log heuristic outputs. They are not ground-truth labels; preserve and validate provenance where supplied. |
 
 The fixture's `generation_rule_id` and `template_id` identify synthetic fixture
@@ -59,4 +59,3 @@ source record ID, mapping ID, preprocessing version, artifact ID and embedding
 model revision, and explicit namespace now required by the genuine loader. This artifact is therefore
 **BLOCKED for genuine fusion use** until an authoritative artifact/metadata
 version is supplied. The existing index is not used to align technician logs.
-

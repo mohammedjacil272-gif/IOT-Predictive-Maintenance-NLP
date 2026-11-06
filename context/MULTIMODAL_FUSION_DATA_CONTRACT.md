@@ -113,10 +113,17 @@ preprocessing lineage, and the four distinct timestamps. A log without a
 matching sensor key, a duplicate log ID, or a split mismatch is rejected.
 
 Optional fields currently accepted by the adapter are `entities`,
-`severity_score`, `severity_label`, `matched_terms`, and `explanation`. Supplied
-entity provenance is checked against its containing log; output provenance is
-retained. Severity is optional and does not replace the RUL target. These
-optional fields do not establish source identity or point-in-time availability.
+`severity_score`, `severity_label`, `matched_terms`, and `explanation`. Whenever
+an entity is present, it must carry its own non-empty `log_id` exactly matching
+the containing text record. Ownership is never inherited from the parent.
+Missing or nonmatching entity IDs fail closed in synthetic and genuine
+namespaces. Supplied entity `unit_id`, `cycle`, and split provenance is
+checked against its parent and canonical window where present. Genuine entity
+records must carry matching `log_id`, `unit_id`, `cycle`, and split values.
+Source, artifact, and timestamp provenance requirements apply to the parent
+genuine text record, not to every entity. Output provenance is retained. Severity is optional
+and does not replace the RUL target. These optional fields do not establish
+source identity or point-in-time availability.
 
 The current NLP artifact builder requires input `log_id` and `text`; it carries
 other source columns through preprocessing when supplied. The fusion adapter
@@ -178,4 +185,3 @@ These are current implementation policies, not approved production choices.
   artifact lacks an explicit genuine namespace and required source/artifact
   provenance fields and is **BLOCKED** for genuine loading until authoritative
   metadata is supplied.
-
