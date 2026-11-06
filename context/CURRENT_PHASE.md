@@ -1,149 +1,24 @@
-# Current Phase
+# Current Phase and Readiness
 
-## Active Phase
+## Current implementation
 
-Phase 1: C-MAPSS FD001 preprocessing
+The repository has progressed beyond the original preprocessing-only phase. It contains FD001 sensor preprocessing and an LSTM baseline, technician-log NLP and embedding artifact generation, metadata-based fusion components, and IoT ingestion/replay code. Software tests cover selected interfaces; each recorded result applies only to its named source revision, environment, and command.
 
-The immediate objective is to build a clean, reproducible, and well-validated preprocessing pipeline before implementing any LSTM model code.
+## Safe current work
 
-## Dataset
+- Maintain software contracts using synthetic fixtures and reviewable tests.
+- Preserve namespace separation, record provenance, and entity-level `log_id` ownership.
+- Inspect frozen baseline/generated artifacts read-only unless a separately approved task requires writing.
+- Keep unverified or historical test results labeled with their exact scope.
 
-The current phase targets the NASA C-MAPSS FD001 dataset.
+## Blocked work
 
-Expected dataset location:
+Genuine fusion training and performance evaluation remain blocked pending approved permissioned paired data, authoritative equipment mapping and shared cycle semantics, point-in-time availability/cutoff rules, target and horizon, equipment-level splits, missing/multiple-log decisions, embedding and baseline-checkpoint lineage, and explicit training authorization. Final held-out evaluation requires separate authorization.
 
-```text
-Data/
-    train_FD001.txt
-    test_FD001.txt
-    RUL_FD001.txt
-    train_FD002.txt
-    test_FD002.txt
-    RUL_FD002.txt
-    train_FD003.txt
-    test_FD003.txt
-    RUL_FD003.txt
-    train_FD004.txt
-    test_FD004.txt
-    RUL_FD004.txt
-```
+The expected baseline checkpoint is absent from the checked-in inventory. Do not retrain the baseline, regenerate frozen artifacts, create substitute checkpoints, or use official FD001 test labels for training/model selection to clear this gap.
 
-Current FD001 experiment files:
+## IoT readiness
 
-```text
-Data/train_FD001.txt
-Data/test_FD001.txt
-Data/RUL_FD001.txt
-```
+MQTT, InfluxDB, and replay software and mock/software tests exist. They do not establish live broker, database, device, or hardware validation. Such validation requires an approved isolated setup and recorded evidence.
 
-Expected canonical columns:
-
-```text
-unit_id
-cycle
-setting_1
-setting_2
-setting_3
-sensor_1 ... sensor_21
-```
-
-No dataset files should be created by documentation or scaffolding steps.
-
-## Verified FD001 Dataset Structure
-
-The FD001 files were inspected in read-only mode and have the following confirmed structure.
-
-`Data/train_FD001.txt`:
-
-- 20,631 rows.
-- 26 columns.
-- 100 engines.
-- Engine IDs 1-100.
-- Cycles are sequential within each engine.
-- Cycle range is 1-362.
-
-`Data/test_FD001.txt`:
-
-- 13,096 rows.
-- 26 columns.
-- 100 engines.
-- Engine IDs 1-100.
-- Cycles are sequential within each engine.
-- Cycle range is 1-303.
-
-`Data/RUL_FD001.txt`:
-
-- 100 values.
-- RUL range is 7-145.
-- Values correspond to the 100 FD001 test engines by dataset ordering convention.
-
-Column structure:
-
-- Column 1: engine/unit ID.
-- Column 2: cycle.
-- Columns 3-5: operational settings.
-- Columns 6-26: sensor measurements.
-
-Data quality:
-
-- Files are whitespace-delimited.
-- Files have no header row.
-- All inspected FD001 rows have 26 numeric finite values.
-- No blank rows were found.
-- No malformed-width rows were found.
-- Trailing whitespace exists and is harmless for whitespace parsing.
-- No missing values were found.
-
-Constant in both FD001 train and test:
-
-- `setting_3`
-- `sensor_1`
-- `sensor_5`
-- `sensor_10`
-- `sensor_16`
-- `sensor_18`
-- `sensor_19`
-
-These columns must not be silently removed. Feature selection must be an explicit preprocessing decision that distinguishes raw available sensor and setting columns, informative or non-constant features, and the final feature set actually used by the model.
-
-## In Scope
-
-The preprocessing phase should eventually include:
-
-- Loading the three FD001 files.
-- Validating that files, columns, shapes, and assumptions match expectations.
-- Generating training RUL per engine using:
-
-```text
-RUL = maximum cycle of that engine - current cycle
-```
-
-- Correctly associating `RUL_FD001.txt` values with test engines.
-- Keeping sensor feature selection explicit and configurable.
-- Distinguishing raw available columns, informative or non-constant columns, and final model features.
-- Fitting normalization or scaling only on training data.
-- Applying the fitted scaler to test data.
-- Preserving temporal ordering for each engine.
-- Creating configurable sliding windows.
-- Using a default window size of 30 cycles.
-- Producing arrays suitable for a future PyTorch LSTM.
-
-## Out of Scope
-
-The following are not part of the current phase:
-
-- Implementing the LSTM model.
-- Training any model.
-- Extracting sensor embeddings.
-- Creating the NLP pipeline.
-- Running NER or severity scoring.
-- Generating BERT embeddings.
-- Implementing multimodal fusion.
-- Integrating MQTT, InfluxDB, dashboards, or real-time IoT simulation.
-- Creating dataset files.
-- Installing dependencies.
-- Reporting metrics that have not been generated by real execution.
-
-## Current Constraint
-
-Only project context and documentation files should exist at this stage. No Python implementation code should be created until explicitly requested.
+See the [approval checklist](MULTIMODAL_APPROVAL_CHECKLIST.md), [decision register](../docs/MULTIMODAL_DECISION_REGISTER.md), [evaluation protocol](../docs/MULTIMODAL_EVALUATION_PROTOCOL.md), and [readiness results](../docs/READINESS_VALIDATION_RESULTS.md).

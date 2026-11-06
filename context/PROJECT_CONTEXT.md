@@ -1,3 +1,5 @@
+> **Historical project proposal:** This file records original goals, planned phases, and early dataset-layout assumptions; it is not a current implementation or readiness report. For current gates and evidence, see the [fusion handoff](../docs/MULTIMODAL_FUSION_HANDOFF.md), [approval checklist](MULTIMODAL_APPROVAL_CHECKLIST.md), and [evaluation protocol](../docs/MULTIMODAL_EVALUATION_PROTOCOL.md). The reviewed tree stores FD001 files under lowercase `data/`; `Data/` references and the original do-not-rename instruction below describe historical layout, not current path guidance. Planned work below is not evidence that a component exists or has been validated.
+
 # Project Context
 
 ## Project
