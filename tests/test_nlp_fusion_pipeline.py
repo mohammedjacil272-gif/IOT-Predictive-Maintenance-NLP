@@ -3,6 +3,7 @@
 import csv
 import json
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 import torch
@@ -10,6 +11,7 @@ import torch
 from scripts import build_nlp_artifacts as builder
 import training.nlp_fusion_pipeline as pipeline
 from training.nlp_artifact_validation import validate_nlp_artifact_package
+from training.train_multimodal import make_dataset
 
 
 def _write_package(root: Path, *, shape=(1, 768), entity_log_id="log-0") -> None:
@@ -103,7 +105,7 @@ def test_valid_synthetic_package_reaches_adapter_and_preserves_provenance(tmp_pa
     assert result["samples"]["text_embeddings"].shape == (1, 768)
 
 
-def test_builder_package_reaches_fusion_pipeline_with_metadata_alignment(
+def test_builder_package_reaches_fusion_pipeline_and_training_dataset(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr(
@@ -199,6 +201,14 @@ def test_builder_package_reaches_fusion_pipeline_with_metadata_alignment(
             "namespace": "synthetic_fixture",
         },
         {
+            "unit_id": 1,
+            "cycle": 4,
+            "split": "fixture",
+            "sensor_embedding": [3.0] * 64,
+            "rul": 89.0,
+            "namespace": "synthetic_fixture",
+        },
+        {
             "unit_id": 2,
             "cycle": 7,
             "split": "fixture",
@@ -211,7 +221,7 @@ def test_builder_package_reaches_fusion_pipeline_with_metadata_alignment(
     result = pipeline.build_validated_fusion_samples(
         package_dir,
         sensors,
-        missing_log_policy="error",
+        missing_log_policy="zero_vector",
         multiple_log_policy="error",
     )
 
@@ -219,16 +229,35 @@ def test_builder_package_reaches_fusion_pipeline_with_metadata_alignment(
     assert adapter_validation_statuses == ["PASS"]
     assert result["validation"]["status"] == "PASS"
     assert result["validation"]["genuine_data_claim"] is False
-    assert samples["unit_id"].tolist() == [1, 2]
-    assert samples["cycle"].tolist() == [3, 7]
-    assert samples["split"] == ("fixture", "fixture")
-    assert samples["log_ids_by_window"] == [["alpha-log"], ["beta-log"]]
+    assert samples["unit_id"].tolist() == [1, 1, 2]
+    assert samples["cycle"].tolist() == [3, 4, 7]
+    assert samples["split"] == ("fixture", "fixture", "fixture")
+    assert samples["log_ids_by_window"] == [["alpha-log"], [], ["beta-log"]]
     # The deterministic fixture extractor returns no entities, so the pipeline
     # must preserve that absence without inventing entity ownership.
-    assert samples["entities_by_window"] == [[], []]
-    assert samples["text_embeddings"][:, 0].tolist() == [11.0, 22.0]
+    assert samples["entities_by_window"] == [[], [], []]
+    assert samples["has_log"].tolist() == [True, False, True]
+    assert samples["text_embeddings"][:, 0].tolist() == [11.0, 0.0, 22.0]
     assert torch.all(samples["text_embeddings"][0] == 11.0)
-    assert torch.all(samples["text_embeddings"][1] == 22.0)
+    assert torch.count_nonzero(samples["text_embeddings"][1]).item() == 0
+    assert torch.all(samples["text_embeddings"][2] == 22.0)
+
+    dataset = make_dataset(samples, "fixture", use_has_log=True)
+    sensor_tensor, text_tensor, rul_tensor, has_log_tensor = dataset.tensors
+    assert torch.equal(sensor_tensor[:, 0], torch.tensor([1.0, 3.0, 2.0]))
+    assert text_tensor[:, 0].tolist() == [11.0, 0.0, 22.0]
+    assert torch.count_nonzero(text_tensor[1]).item() == 0
+    assert rul_tensor.tolist() == [97.0, 89.0, 93.0]
+    assert has_log_tensor.tolist() == [True, False, True]
+
+    # make_dataset recomputes the immutable receipt digest before returning a
+    # TensorDataset; altered sample content must be rejected on that path.
+    tampered = {key: samples[key] for key in samples}
+    tampered["rul"] = tampered["rul"].clone()
+    tampered["rul"][0] = -1.0
+    object.__setattr__(samples, "_data", MappingProxyType(tampered))
+    with pytest.raises(ValueError, match="content digest mismatch"):
+        make_dataset(samples, "fixture", use_has_log=True)
 
 
 def test_invalid_package_never_reaches_adapter(tmp_path, monkeypatch):
