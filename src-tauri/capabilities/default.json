@@ -1,0 +1,1 @@
+{"$schema":"../gen/schemas/desktop-schema.json","identifier":"default","description":"Local desktop capabilities with only the owned backend sidecar spawn permission.","windows":["main"],"permissions":["core:default","shell:allow-spawn"]}

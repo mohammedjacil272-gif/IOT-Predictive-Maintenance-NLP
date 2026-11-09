@@ -10,6 +10,13 @@ venv/
 .vscode/
 .idea/
 *.log
+.local_history.json
+.assistant.sqlite3
+build/
+dist/
+frontend/node_modules/
+frontend/dist/
+src-tauri/target/
 
 # Model and generated numeric artifacts. Existing tracked files remain tracked.
 *.pt

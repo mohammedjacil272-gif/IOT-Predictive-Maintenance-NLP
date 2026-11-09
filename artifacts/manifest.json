@@ -1,0 +1,11 @@
+{
+  "dataset_type": "synthetic_fixture",
+  "files": {
+    "embeddings/embeddings.pt": {"sha256": "5174cf644d620b5590f76d75a43cae9a2bc38b0b260d356ebe828785192095c6"},
+    "embeddings/embedding_metadata.csv": {"sha256": "de37c09a9bbba1f7eefe51c9cd2f20620182a3aa1baa9e1ed1d63a26789f6cb7"},
+    "data/processed_logs.csv": {"sha256": "8d05bfb213e58cbdb5621910463f5d43eaf7cb78e2ed3e0a9945e3cddc0b0758"},
+    "data/entities.jsonl": {"sha256": "e7075aa5cddacf07917a3affd15d0be43fa5a9cda8420f0cb3f8c568e4dbac47"},
+    "data/severity.csv": {"sha256": "3009708944a3def87a39cb080dbb67f9ada5ef072c1e22bae23cefd04092d7d7"},
+    "data/verification_report.json": {"sha256": "108334ddef8c55963bae514da740dfa41e8967010c40f6ad3f71731f05be89d8"}
+  }
+}

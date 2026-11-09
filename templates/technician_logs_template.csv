@@ -1,0 +1,2 @@
+TEMPLATE_ONLY_DO_NOT_TREAT_AS_DATA
+log_id,source_system,source_machine_id,canonical_unit_id,event_timestamp,created_at,ingested_at,available_at,text,event_type,source_record_id,source_dataset,source_dataset_version,provenance_reference,is_synthetic,approval_status

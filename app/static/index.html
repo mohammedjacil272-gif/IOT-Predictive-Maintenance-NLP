@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IoT Predictive Maintenance</title><link rel="stylesheet" href="/static/styles.css"></head>
+<body>
+<header><div><p class="eyebrow">LOCAL OPERATIONS CONSOLE</p><h1>Predictive Maintenance</h1><p class="muted">Sensor, technician-log, and fusion readiness in one place.</p></div><span id="health" class="pill">Checking backend…</span></header>
+<main>
+  <section class="grid cards" id="statusCards"></section>
+  <section class="panel"><div class="panel-title"><h2>Technician log analysis</h2><span class="badge">NLP only</span></div><p class="muted">Rule-based analysis is available locally. Transformer embeddings remain optional and are never silently substituted.</p><textarea id="logText" placeholder="Example: Critical vibration detected near the bearing; inspect immediately."></textarea><div class="row"><input id="logId" value="ui-log-001" aria-label="Log ID"><input id="unitId" placeholder="Machine/entity ID" aria-label="Machine ID"><button id="analyze">Analyze log</button></div><pre id="logResult" class="result">No analysis yet.</pre></section>
+  <section class="grid two"><div class="panel"><h2>Sensor inference</h2><p class="muted">Submit a validated 30-cycle FD001 window through the API. No fabricated live readings are shown.</p><textarea id="sensorRecords" aria-label="Sensor records JSON" placeholder='Paste a JSON array of 30 consecutive records using the 17 selected FD001 features.'></textarea><div class="row"><button id="inferSensor">Run sensor inference</button><span class="muted">Paste a 30-cycle JSON window directly; replay tooling is available separately.</span></div><pre id="sensorResult" class="result">No sensor inference yet.</pre></div><div class="panel"><h2>Fusion readiness</h2><p class="muted">Fusion requires approved paired data, provenance, alignment, and a trained checkpoint.</p><div class="state blocked">NOT VALIDATED</div><p id="fusionReason" class="muted">Loading status…</p></div></section>
+  <section class="panel"><h2>Model modes</h2><div id="models" class="table"></div></section>
+  <section class="panel"><div class="panel-title"><h2>Recent local activity</h2><button id="clearHistory" type="button">Clear history</button></div><p class="muted">Successful sensor-only and NLP-only requests stored locally. Fusion predictions are never stored.</p><div id="history" class="table">No recent activity.</div></section>
+</main><footer>Local development mode · No secrets or external services are required to view this console.</footer>
+<script src="/static/app.js"></script>
+</body></html>

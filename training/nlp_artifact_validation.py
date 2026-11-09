@@ -180,8 +180,14 @@ def _valid_timezone(value: object) -> bool:
 
 
 def _artifact_path(root: Path, name: str) -> Path:
-    """Resolve flat packages and the documented split data/embedding layout."""
-    candidates = (root / name, root / "data" / name, root / "embeddings" / name)
+    """Resolve flat, split, and checked-in namespaced fixture layouts."""
+    candidates = (
+        root / name,
+        root / "data" / name,
+        root / "embeddings" / name,
+        root / "data" / "fd001_nlp_fixture" / name,
+        root / "embeddings" / "fd001_nlp_fixture" / name,
+    )
     for candidate in candidates:
         if candidate.is_symlink():
             return candidate

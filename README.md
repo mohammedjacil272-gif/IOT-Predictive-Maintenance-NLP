@@ -1,12 +1,16 @@
 # IoT Predictive Maintenance: Current Status
 
+The project now includes a tested local technician-assistant backend foundation: explicit sensor/NLP/fusion modes, local history, assistant analysis and confirmation contracts, typed transcription fallback, machine-health evidence separation, attachment validation, and transactional SQLite storage. Genuine multimodal fusion remains gated and unavailable.
+
+A Windows-first React/Tauri desktop scaffold is also present under `frontend/` and `src-tauri/`. It is not yet a built native application or installer because the current environment lacks Rust/Cargo and PyInstaller.
+
 This repository contains an FD001 sensor preprocessing and LSTM baseline pipeline, technician-log NLP and embedding artifact generation, metadata-based multimodal fusion components, and IoT ingestion/replay code. Software tests exercise selected interfaces; they do not establish real sensor/log pairing, live-service operation, or predictive improvement.
 
 ## Project status
 
 | Area | Status in the reviewed repository |
 |---|---|
-| Sensor baseline | FD001 preprocessing, LSTM, and sensor embedding components exist. The expected `best_model.pt` checkpoint is absent from the checked-in inventory. Do not retrain or generate a replacement to clear this gap. |
+| Sensor baseline | FD001 preprocessing, LSTM, and sensor embedding components exist. The frozen `best_model.pt`, `last_model.pt`, window arrays, and sensor embeddings are present locally and match the handover hashes. Do not retrain or generate replacements. |
 | NLP | Log preprocessing, rule-based entities/severity, and embedding artifact generation exist. The five-log fixture is synthetic. |
 | Fusion | Sensor and text records are aligned by metadata using the provisional `(unit_id, cycle)` key. No row-order or vector-position join is valid. Entity records must carry their own matching `log_id`. |
 | Genuine data | No approved genuine paired dataset, authoritative cross-source equipment mapping, or genuine training authorization is established. Genuine training/evaluation remain blocked by the gates in the approval checklist and decision register. |
@@ -30,6 +34,6 @@ The alignment key and real-world cycle relationship remain provisional until ver
 
 The tracked FD001 directory in this source snapshot is lowercase `data/`. Historical notes that say `Data/` are not current path instructions. Do not regenerate frozen baseline data, transforms, metrics, or checkpoints during documentation work. Check output paths before running commands that write artifacts.
 
-No approved dependency manifest or platform lock exists in this base snapshot. Versions reported in audit documents are observations, not supported installation pins. Defer an installable `requirements.txt` until maintainers approve a runtime/platform and validate dependencies in a clean environment. The text model's immutable revision and asset-checksum lineage also remain unresolved for existing artifacts.
+`requirements.txt` declares the current broad runtime ranges; it is not a fully resolved lockfile. The verified handover environment is documented in `docs/WAHID_DEPENDENCY_SETUP.md`. The text model's immutable revision and asset-checksum lineage remain unresolved for the synthetic fixture.
 
 For recorded test scope and results, see [readiness validation](docs/READINESS_VALIDATION_RESULTS.md). No tests were run to prepare this proposal.
