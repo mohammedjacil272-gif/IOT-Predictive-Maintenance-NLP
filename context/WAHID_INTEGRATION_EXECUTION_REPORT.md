@@ -138,3 +138,64 @@ Added `training/nlp_fusion_adapter.py` as an explicit, opt-in schema boundary fo
 Added synthetic tests in `tests/test_nlp_fusion_adapter.py` for schema mapping, index-driven row correspondence, dimensions/finiteness, IDs and duplicate records, explicit split/namespace, absence of fabricated provenance, and invalid timestamps. Existing fusion tests continue to cover duplicate source identity, missing genuine provenance, and full cutoff enforcement.
 
 Validation: focused fusion/adapter tests **PASS**, 65 passed; full suite in project `.venv` **PASS**, 82 passed in 8.72s. No training, predictive-performance evaluation, or baseline action was performed. Rafaz's actual generated NLP artifacts and genuine mapping/provenance/timestamp values remain **BLOCKED**; the tests use synthetic fixture values only.
+
+## Current execution addendum (2026-11-09)
+
+This addendum supersedes stale artifact-availability observations above where the
+current worktree contains the relevant files. The execution was read-only with
+respect to datasets, embeddings, checkpoints, and the frozen sensor baseline.
+
+### Work completed
+
+- Revalidated `artifacts/embeddings/fd001_lstm_baseline/sensor_embeddings.npy`
+  and its metadata: shape `(17731, 64)`, `float32`, all finite; metadata count
+  `17731`; unique and complete `embedding_index` values `0..17730`; no duplicate
+  `(unit_id, label_cycle)` keys; valid window/cycle relationships; and matching
+  train/validation provenance fields. Counts are train `14207`, validation `3524`.
+- Added the read-only `scripts/verify_sensor_embeddings.py` verifier and a
+  regression test for the complete index and alignment contract.
+- Fixed `scripts/verify_fusion.py` so direct invocation from the repository root
+  works without a `PYTHONPATH` adjustment. This was an invocation defect only;
+  no model behavior changed.
+- Confirmed the fusion implementation retains every sensor window for the
+  explicit `zero_vector` missing-log policy, sets `has_log=False`, rejects
+  malformed text, and uses deterministic `log_id` ordering for the explicit
+  `mean_sorted_log_id` policy while preserving per-log provenance. Policy
+  choices remain explicit and are not silently approved as production policy.
+- Confirmed canonical alignment is `(unit_id, cycle)`; `embedding_index` is only
+  an artifact-local sensor-array lookup. Existing guards reject duplicates,
+  missing/out-of-range indices, split leakage, malformed dimensions, non-finite
+  values, unmatched text, and unauthorized genuine provenance/cutoffs.
+
+### Current validation results
+
+| Command | Result |
+|---|---|
+| `python -m pytest -q` | **PASS**, `398 passed, 3 skipped, 2 warnings, 25 subtests passed in 36.31s`. |
+| `python scripts/verify_sensor_embeddings.py` | **PASS**, 17,731 rows, 64D, index 0..17,730, zero duplicate keys; no files modified. |
+| `python scripts/verify_fusion.py` | **PASS**, synthetic forward-only shape `(32,)`; no training or artifact write. |
+| `python scripts/verify_fusion_provenance.py` | **PASS**, synthetic fixture checks only. |
+| `python scripts/verify_nlp_fd001_compatibility.py` | **PASS**, synthetic NLP fixture interface checks only; fabricated FD001 mapping rejected. |
+| `python scripts/verify_preprocessing.py` | **PASS**, deterministic FD001 preprocessing artifact checks. |
+| `python scripts/verify_lstm_baseline.py` | **PASS**, current baseline checkpoints present and verified read-only; official test labels were not used for training/model selection. |
+| `npm run build` (from `frontend`) | **PASS**, TypeScript and Vite production build. |
+| focused fusion/sensor tests | **PASS**, `49 passed in 4.13s`. |
+
+Warnings are pre-existing pytest return-value
+and scikit-learn serialization-version warnings; neither caused a failure.
+
+### Genuine integration decision
+
+The software integration and validation gates are **GO for fixture/interface
+verification**. Genuine multimodal training/evaluation remains **NO-GO**. The
+checked-in NLP package is explicitly `synthetic_fixture`, not genuine technician
+logs; it does not provide approved genuine source identity, equipment mapping,
+cycle semantics, timestamp/cutoff evidence, or approved training authorization.
+The current comparison report correctly leaves NLP-only and multimodal metrics
+pending. No checkpoint was recreated, overwritten, or randomly substituted, and
+no official FD001 test labels were used.
+
+Final status for the requested genuine integration: **PARTIALLY COMPLETE / NO-GO**
+pending genuine NLP artifacts and approvals. Exact unblock requirements remain
+the genuine artifact package and approved policy/authorization documents listed
+in the earlier sections of this report.

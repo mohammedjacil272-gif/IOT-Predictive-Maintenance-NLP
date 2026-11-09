@@ -20,6 +20,32 @@ This repository contains an FD001 sensor preprocessing and LSTM baseline pipelin
 
 See the [approval checklist](context/MULTIMODAL_APPROVAL_CHECKLIST.md), [decision register](docs/MULTIMODAL_DECISION_REGISTER.md), [fusion contract](context/MULTIMODAL_FUSION_DATA_CONTRACT.md), [evaluation protocol](docs/MULTIMODAL_EVALUATION_PROTOCOL.md), and [fusion handoff](docs/MULTIMODAL_FUSION_HANDOFF.md) for detailed current gates. Test reports are historical evidence tied to their recorded revision, environment, and command.
 
+## Integration verification
+
+From the repository root, use the project Python environment and run:
+
+```powershell
+python -m pytest -q
+python scripts/verify_sensor_embeddings.py
+python scripts/verify_fusion.py
+python scripts/verify_fusion_provenance.py
+python scripts/verify_nlp_fd001_compatibility.py
+python scripts/verify_preprocessing.py
+python scripts/verify_lstm_baseline.py
+# After an owner supplies approved genuine logs:
+python scripts/validate_genuine_logs.py path/to/approved_logs.csv --dataset owner-export --dataset-version 2026-01
+```
+
+The sensor verifier is read-only and checks the 64-D array, 17,731-row
+metadata/index contract, `(unit_id, label_cycle)` uniqueness, and train/validation
+alignment. Missing logs use an explicitly selected policy; the approved production
+choice is still pending. The checked-in NLP package is a synthetic fixture, so
+these commands validate interfaces and integrity only. They do not establish
+genuine sensor/log pairing or multimodal performance. See
+`context/WAHID_INTEGRATION_EXECUTION_REPORT.md` and
+`docs/NLP_GENUINE_DATA_INTAKE.md` for the latest execution record and genuine
+intake contract.
+
 ## Implemented flow
 
 ```text
