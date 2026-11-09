@@ -13,6 +13,7 @@ integration layers and are not accepted by this schema.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import math
 from numbers import Real
 from typing import Mapping
@@ -40,6 +41,7 @@ FD001_SENSOR_FEATURES: tuple[str, ...] = (
 
 _IDENTIFIER_FIELDS = ("unit_id", "cycle")
 _REQUIRED_KEYS = set(_IDENTIFIER_FIELDS) | set(FD001_SENSOR_FEATURES)
+_OPTIONAL_KEYS = {"event_timestamp"}
 
 
 class SensorMessageValidationError(ValueError):
@@ -60,15 +62,19 @@ class SensorMessage:
     unit_id: int
     cycle: int
     features: dict[str, float]
+    event_timestamp: str | None = None
 
     def to_dict(self) -> dict[str, int | float]:
         """Return a flat message dictionary in the documented feature order."""
 
-        return {
+        result = {
             "unit_id": self.unit_id,
             "cycle": self.cycle,
             **{feature: self.features[feature] for feature in FD001_SENSOR_FEATURES},
         }
+        if self.event_timestamp is not None:
+            result["event_timestamp"] = self.event_timestamp
+        return result
 
 
 def validate_sensor_message(message: Mapping[str, object]) -> SensorMessage:
@@ -96,7 +102,7 @@ def validate_sensor_message(message: Mapping[str, object]) -> SensorMessage:
     if missing:
         raise SensorMessageValidationError(f"Missing required fields: {missing}")
 
-    unexpected = sorted(keys - _REQUIRED_KEYS)
+    unexpected = sorted(keys - _REQUIRED_KEYS - _OPTIONAL_KEYS)
     if unexpected:
         raise SensorMessageValidationError(f"Unexpected fields: {unexpected}")
 
@@ -107,7 +113,20 @@ def validate_sensor_message(message: Mapping[str, object]) -> SensorMessage:
         for feature in FD001_SENSOR_FEATURES
     }
 
-    return SensorMessage(unit_id=unit_id, cycle=cycle, features=features)
+    event_timestamp = message.get("event_timestamp")
+    if event_timestamp is not None:
+        if not isinstance(event_timestamp, str) or not event_timestamp.strip():
+            raise SensorMessageValidationError("event_timestamp must be an ISO-8601 timestamp with timezone.")
+        normalized_timestamp = event_timestamp.strip().replace("Z", "+00:00")
+        try:
+            parsed_timestamp = datetime.fromisoformat(normalized_timestamp)
+        except ValueError as exc:
+            raise SensorMessageValidationError("event_timestamp must be an ISO-8601 timestamp with timezone.") from exc
+        if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+            raise SensorMessageValidationError("event_timestamp must include an explicit timezone offset.")
+        event_timestamp = normalized_timestamp
+
+    return SensorMessage(unit_id=unit_id, cycle=cycle, features=features, event_timestamp=event_timestamp)
 
 
 def _validate_positive_int(value: object, field_name: str) -> int:

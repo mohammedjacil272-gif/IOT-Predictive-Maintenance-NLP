@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 
 from dataclasses import dataclass
+from datetime import datetime
 
 import importlib
 
@@ -183,6 +184,10 @@ class InfluxIngestionConfig:
 
     measurement: str = DEFAULT_INFLUX_MEASUREMENT
 
+    # FD001 replay has cycle identity but no physical timestamp. Live callers
+    # should set this to False so wall-clock timestamps are mandatory.
+    allow_synthetic_timestamps: bool = True
+
 
 @dataclass
 
@@ -198,6 +203,8 @@ class InfluxIngestionStats:
 
     ingestion_failures: int = 0
 
+    duplicates_skipped: int = 0
+
 
 def sensor_message_to_point(
 
@@ -208,6 +215,8 @@ def sensor_message_to_point(
     measurement: str = DEFAULT_INFLUX_MEASUREMENT,
 
     point_factory: Callable[[str], object] | None = None,
+
+    allow_synthetic_timestamp: bool = True,
 
 ) -> object:
 
@@ -235,7 +244,13 @@ def sensor_message_to_point(
 
         point = _call_point_method(point, "field", feature, normalized.features[feature])
 
-    point = _call_point_method(point, "time", _synthetic_timestamp_ns(normalized))
+    if normalized.event_timestamp:
+        timestamp = _event_timestamp_ns(normalized)
+    elif allow_synthetic_timestamp:
+        timestamp = _synthetic_timestamp_ns(normalized)
+    else:
+        raise ValueError("event_timestamp is required when synthetic timestamps are disabled.")
+    point = _call_point_method(point, "time", timestamp)
 
     return point
 
@@ -266,6 +281,7 @@ def start_ingestion(
     influx_client: InfluxClient | None = None
 
     mqtt_client: MqttSubscriberClient | None = None
+    seen_message_keys: set[tuple[int, int, str | None]] = set()
 
 
     try:
@@ -306,6 +322,16 @@ def start_ingestion(
 
                 return
 
+            message_key = (
+                sensor_message.unit_id,
+                sensor_message.cycle,
+                sensor_message.event_timestamp,
+            )
+            if message_key in seen_message_keys:
+                stats.duplicates_skipped += 1
+                return
+            seen_message_keys.add(message_key)
+
 
             try:
 
@@ -316,6 +342,8 @@ def start_ingestion(
                     measurement=config.measurement,
 
                     point_factory=point_factory,
+
+                    allow_synthetic_timestamp=config.allow_synthetic_timestamps,
 
                 )
 
@@ -770,6 +798,13 @@ def _call_point_method(point: object, method_name: str, *args: object) -> object
 def _synthetic_timestamp_ns(message: SensorMessage) -> int:
 
     return SYNTHETIC_EPOCH_NS + ((message.cycle - 1) * SYNTHETIC_CYCLE_INTERVAL_NS)
+
+
+def _event_timestamp_ns(message: SensorMessage) -> int:
+    if not message.event_timestamp:
+        raise ValueError("event_timestamp is required for wall-clock ingestion.")
+    parsed = datetime.fromisoformat(message.event_timestamp)
+    return int(parsed.timestamp() * 1_000_000_000)
 
 
 def _build_query(config: InfluxIngestionConfig, *, unit_id: int | None, limit: int) -> str:

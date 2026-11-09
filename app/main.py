@@ -17,7 +17,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from nlp.embeddings import embedding_diagnostics
 from nlp.ner import extract_entities
@@ -30,8 +30,10 @@ from assistant.health import machine_health
 from assistant.intents import classify_intent
 from assistant.storage import AssistantStorage
 from assistant.voice import TranscriptionRequest, UnavailableTranscriptionProvider, UnavailableTTSProvider
-from assistant.attachments import store_attachment
+from assistant.attachments import attachment_contract, store_attachment
 from assistant.gateway import ModelGatewayConfig, ModelGatewayError, OllamaGateway, bounded_context
+from assistant.grounding import evidence_summary, grounded_system_prompt
+from assistant.tools import MaintenanceToolError, ReadOnlyMaintenanceTools, tool_evidence_text
 from assistant.retrieval import LocalKnowledgeIndex, RetrievalError
 
 DATA_ROOT = Path(os.environ.get("IOT_INTEGRATED_ROOT", Path(__file__).resolve().parents[1])).resolve()
@@ -46,6 +48,8 @@ MODEL_PATH = RESOURCE_ROOT / "artifacts/models/fd001_lstm_baseline/best_model.pt
 SCALER_PATH = RESOURCE_ROOT / "artifacts/data/fd001_lstm_baseline/scaler.joblib"
 SENSOR_EMBEDDING_PATH = RESOURCE_ROOT / "artifacts/embeddings/fd001_lstm_baseline/sensor_embeddings.npy"
 FUSION_ARTIFACT_ROOT = RESOURCE_ROOT / "artifacts/models/fusion"
+VALIDATION_METRICS_PATH = RESOURCE_ROOT / "artifacts/metrics/fd001_lstm_baseline/validation_metrics.json"
+OFFICIAL_TEST_METRICS_PATH = RESOURCE_ROOT / "artifacts/metrics/fd001_lstm_baseline/test_metrics.json"
 HISTORY_PATH = DATA_ROOT / ".local_history.json"
 HISTORY = LocalHistoryStore(HISTORY_PATH)
 ASSISTANT_STORAGE = AssistantStorage(DATA_ROOT / ".assistant.sqlite3")
@@ -56,6 +60,47 @@ KNOWLEDGE_INDEX = LocalKnowledgeIndex(DATA_ROOT / ".knowledge", allowed_roots=(R
 def fusion_checkpoint_present() -> bool:
     """Return whether a candidate fusion checkpoint exists under the resource root."""
     return FUSION_ARTIFACT_ROOT.is_dir() and any(FUSION_ARTIFACT_ROOT.glob("*.pt"))
+
+
+def official_test_evaluation() -> dict[str, Any]:
+    """Report official-test state from an explicit artifact, never inference."""
+    if not OFFICIAL_TEST_METRICS_PATH.is_file():
+        return {
+            "status": "not_run",
+            "split": "official_test",
+            "metrics_path": str(OFFICIAL_TEST_METRICS_PATH),
+            "reason": "Official FD001 test evaluation has not been run; validation metrics are not official-test metrics.",
+        }
+    try:
+        payload = json.loads(OFFICIAL_TEST_METRICS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "failed", "split": "official_test", "reason": f"Official-test metrics are unreadable: {exc}"}
+    required = {"mae", "rmse", "mse", "official_test_labels_used"}
+    if not required.issubset(payload):
+        return {"status": "failed", "split": "official_test", "reason": "Official-test metrics artifact is incomplete."}
+    return {
+        "status": "completed",
+        "split": "official_test",
+        "metrics_path": str(OFFICIAL_TEST_METRICS_PATH),
+        "metrics": {key: payload[key] for key in ("mae", "rmse", "mse")},
+        "evaluated_at": payload.get("evaluated_at"),
+        "checkpoint_id": payload.get("checkpoint_id"),
+    }
+
+
+def iot_configuration_status() -> dict[str, Any]:
+    """Expose configuration readiness without probing or revealing secrets."""
+    mqtt_ready = all(os.environ.get(key, "").strip() for key in ("IOT_MQTT_HOST", "IOT_MQTT_TOPIC"))
+    influx_ready = all(os.environ.get(key, "").strip() for key in ("IOT_INFLUXDB_URL", "IOT_INFLUXDB_ORG", "IOT_INFLUXDB_BUCKET", "IOT_INFLUXDB_TOKEN"))
+    return {
+        "status": "configured" if mqtt_ready and influx_ready else "local_replay_only",
+        "local_replay": "available",
+        # Keep the existing public status values stable; configuration details
+        # are additive and do not imply a live connection.
+        "mqtt": "not_checked",
+        "influxdb": "not_checked",
+        "configuration": {"mqtt_configured": mqtt_ready, "influxdb_configured": influx_ready},
+    }
 
 app = FastAPI(title="IoT Predictive Maintenance", version="0.1.0")
 API_TOKEN = os.environ.get("IOT_API_TOKEN")
@@ -91,6 +136,15 @@ class MachineRequest(BaseModel):
     is_synthetic: bool = False
 
 
+class MachinePatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=256)
+    machine_type: str | None = None
+    location: str | None = None
+    is_synthetic: bool | None = None
+
+
 class SessionRequest(BaseModel):
     machine_id: str = Field(min_length=1, max_length=128)
 
@@ -109,7 +163,7 @@ class AttachmentRequest(BaseModel):
     session_id: str = Field(min_length=1)
     machine_id: str | None = None
     filename: str = Field(min_length=1, max_length=255)
-    mime_type: str
+    mime_type: str = Field(min_length=1, max_length=128)
     data_base64: str = Field(min_length=1)
 
 
@@ -153,13 +207,20 @@ def health() -> dict[str, Any]:
 
 @app.get("/api/status")
 def status() -> dict[str, Any]:
+    test_evaluation = official_test_evaluation()
     return {
         "sensor": {
             "mode": "fd001_lstm",
             "status": "ready" if SCALER_PATH.exists() and MODEL_PATH.exists() else "blocked_missing_checkpoint",
             "checkpoint_present": MODEL_PATH.exists(),
             "scaler_present": SCALER_PATH.exists(),
-            "official_test_evaluation": "completed_separately",
+            "official_test_evaluation": test_evaluation["status"],
+            "validation_metrics": {
+                "status": "available" if VALIDATION_METRICS_PATH.is_file() else "unavailable",
+                "split": "validation",
+                "metrics_path": str(VALIDATION_METRICS_PATH),
+            },
+            "official_test_evaluation_detail": test_evaluation,
         },
         "nlp": {"status": "rule_based_ready", "embedding": embedding_diagnostics()},
         "fusion": {
@@ -167,7 +228,7 @@ def status() -> dict[str, Any]:
             "prediction_available": False,
             "reason": "No approved trained fusion checkpoint is present; synthetic forward passes are not production predictions.",
         },
-        "iot": {"status": "local_replay_available", "mqtt": "not_checked", "influxdb": "not_checked"},
+        "iot": iot_configuration_status(),
     }
 
 
@@ -179,6 +240,11 @@ def models() -> dict[str, Any]:
         "nlp_only": {"model": "rule_based_contract", "status": "available"},
         "fusion": {"model": "MultimodalFusionModel", "status": "untrained_or_unvalidated"},
     }
+
+
+@app.get("/api/attachments/contract")
+def attachments_contract() -> dict[str, object]:
+    return attachment_contract()
 
 
 @app.get("/api/fusion/readiness")
@@ -232,7 +298,7 @@ def sensor_infer(request: SensorRequest) -> dict[str, Any]:
         response = {"mode": "sensor_only", "model_id": "fd001_lstm_baseline", "model_status": "ready",
                 "unit_id": result.unit_id, "window_start_cycle": result.window_start_cycle,
                 "window_end_cycle": result.window_end_cycle, "prediction": result.prediction,
-                "prediction_semantics": "FD001 uncapped RUL cycles from the validation-trained baseline; official test evaluation was completed separately and this prediction is not an official test result"}
+                "prediction_semantics": "FD001 uncapped RUL cycles from the validation-trained baseline; official-test evaluation status is reported separately and this prediction is not an official test result"}
         HISTORY.append(mode="sensor_only", model_id="fd001_lstm_baseline", request={"records": request.records},
                        response=response, source_provenance="user_submitted", is_synthetic=False)
         return response
@@ -341,9 +407,16 @@ def chat_session(session_id: str, request: ChatRequest) -> dict[str, Any]:
     ASSISTANT_STORAGE.add_message(session_id, "user", request.text, {"provenance": "user_submitted"})
     messages = ASSISTANT_STORAGE.list_messages(session_id)
     references = KNOWLEDGE_INDEX.search(request.text) if request.include_retrieval else []
-    system = "You are a local predictive-maintenance assistant. Be explicit about uncertainty and never claim unavailable data or tool execution."
-    if references:
-        system += "\nRetrieved evidence follows; cite only these sources:\n" + "\n".join(f"[{item['source_name']} lines {item['line_start']}-{item['line_end']}] {item['text']}" for item in references)
+    tool_activity: list[dict[str, Any]] = []
+    evidence = list(references)
+    if session.get("machine_id"):
+        try:
+            health = ReadOnlyMaintenanceTools(ASSISTANT_STORAGE).machine_health(session["machine_id"])
+            evidence.append({"source_name": "machine_health_tool", "line_start": 1, "line_end": 1, "text": tool_evidence_text(health)})
+            tool_activity.append({"name": "machine_health", "status": "read_only_success"})
+        except MaintenanceToolError as exc:
+            tool_activity.append({"name": "machine_health", "status": "unavailable", "reason": str(exc)})
+    system = grounded_system_prompt(machine_id=session.get("machine_id"), evidence=evidence)
     prompt = bounded_context([{"role": "system", "text": system}, *messages])
     try:
         result = MODEL_GATEWAY.generate(prompt)
@@ -355,7 +428,7 @@ def chat_session(session_id: str, request: ChatRequest) -> dict[str, Any]:
         return {"session_id": session_id, "state": AssistantState.ERROR, "response": None, "response_type": "model_unavailable", "references": references, "reason": str(exc)}
     ASSISTANT_STORAGE.add_message(session_id, "assistant", result["text"], {"response_type": result["response_type"], "provider": result["provider"], "model": result["model"], "references": references})
     ASSISTANT_STORAGE.set_state(session_id, "RESPONDING")
-    return {"session_id": session_id, "state": AssistantState.RESPONDING, "response": result["text"], "response_type": result["response_type"], "references": references, "provider": result["provider"], "model": result["model"]}
+    return {"session_id": session_id, "state": AssistantState.RESPONDING, "response": result["text"], "response_type": result["response_type"], "references": references, "grounding": evidence_summary(machine_id=session.get("machine_id"), references=evidence), "tool_activity": tool_activity, "provider": result["provider"], "model": result["model"]}
 
 
 @app.post("/api/knowledge/ingest")
@@ -446,11 +519,10 @@ def get_machine(machine_id: str) -> dict[str, Any]:
 
 
 @app.patch("/api/machines/{machine_id}")
-def update_machine(machine_id: str, request: dict[str, Any]) -> dict[str, Any]:
-    if "machine_id" in request and request["machine_id"] != machine_id: raise HTTPException(status_code=422, detail="machine_id cannot be changed")
+def update_machine(machine_id: str, request: MachinePatchRequest) -> dict[str, Any]:
     current = ASSISTANT_STORAGE.get_machine(machine_id)
     if current is None: raise HTTPException(status_code=404, detail="Machine not registered")
-    current.update({key: value for key, value in request.items() if key != "machine_id"})
+    current.update(request.model_dump(exclude_unset=True))
     try: ASSISTANT_STORAGE.update_machine(machine_id, current)
     except (KeyError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     return current

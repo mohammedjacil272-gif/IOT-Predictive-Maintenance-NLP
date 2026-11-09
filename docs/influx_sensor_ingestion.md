@@ -9,13 +9,13 @@ Stored points use measurement `fd001_sensor_reading` by default. `unit_id` is
 stored as a tag, while `cycle` and the 17 selected FD001 sensor features are
 stored as fields.
 
-InfluxDB still requires a point timestamp for identity, but the FD001 `cycle`
-is not a real measurement time. The ingester therefore uses a synthetic,
-documented timestamp: fixed epoch `2000-01-01T00:00:00Z` plus one second for
-each cycle index after cycle 1. This timestamp is only an idempotency key for
-InfluxDB storage. It is derived only from the incoming unit/cycle identity,
-does not use wall-clock ingestion time, and must not be interpreted as when the
-engine reading happened.
+For real device payloads, include an offset-aware `event_timestamp`; the
+ingester stores that timestamp and keeps cycle as a field. The event timestamp
+is never inferred from cycle. The local FD001 replay path has no physical event
+time, so it intentionally uses a synthetic documented timestamp: fixed epoch
+`2000-01-01T00:00:00Z` plus one second for each cycle after cycle 1. Replay
+timestamps are only an idempotency key and must not be interpreted as physical
+measurement time.
 
 ## Dependencies
 
@@ -114,7 +114,8 @@ python -m iot.mqtt_publisher --topic industrial/sensors --limit 5
 
 The publisher and ingester both use the existing sensor schema. Payloads with
 extra fields such as `timestamp`, `rul`, or `failure_label` are rejected before
-they can be written.
+they can be written; `event_timestamp` is the sole optional wall-clock field
+and must be timezone-aware.
 
 CLI arguments can override non-secret environment variables. Keep the token in
 `IOT_INFLUXDB_TOKEN` rather than passing it on the command line:

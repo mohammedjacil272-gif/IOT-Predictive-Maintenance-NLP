@@ -25,13 +25,19 @@ sys.path.insert(0, str(ROOT))
 from training.fusion_dataset import build_fusion_samples
 
 
-def build_fixture_samples(sensor_records, text_records):
+def build_fixture_samples(
+    sensor_records,
+    text_records,
+    *,
+    missing_log_policy="zero_vector",
+    multiple_log_policy="mean_sorted_log_id",
+):
     """Keep fixture namespaces isolated and select provisional test policies."""
     return build_fusion_samples(
         [dict(row, namespace="synthetic_fixture") for row in sensor_records],
         [dict(row, namespace="synthetic_fixture") for row in text_records],
-        missing_log_policy="zero_vector",
-        multiple_log_policy="mean_sorted_log_id",
+        missing_log_policy=missing_log_policy,
+        multiple_log_policy=multiple_log_policy,
     )
 
 
@@ -216,6 +222,8 @@ def main():
     result = build_fixture_samples(
         sensor_records,
         text_records,
+        missing_log_policy="zero_vector",
+        multiple_log_policy="mean_sorted_log_id",
     )
 
     assert result["sensor_embeddings"].shape == (
@@ -276,6 +284,8 @@ def main():
         lambda: build_fixture_samples(
             sensor_records,
             bad_text,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
         ),
     )
 
@@ -294,6 +304,8 @@ def main():
         lambda: build_fixture_samples(
             sensor_records,
             bad_metadata,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
         ),
     )
 
@@ -325,6 +337,8 @@ def main():
         build_fixture_samples(
             sensor_records,
             fabricated_split,
+            missing_log_policy="zero_vector",
+            multiple_log_policy="mean_sorted_log_id",
         )
 
     expect_failure(

@@ -70,6 +70,16 @@ class _UnsupportedTensorFormat(ValueError):
     """Raised when safe tensor preflight cannot be performed."""
 
 
+def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate JSON object keys instead of silently keeping the last one."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key!r}")
+        result[key] = value
+    return result
+
+
 @contextmanager
 def _open_checked(path: Path, *, max_file_bytes: int):
     """Open one regular, non-symlink file and validate its opened handle."""
@@ -117,7 +127,7 @@ def _json(path: Path, *, max_file_bytes: int) -> tuple[Any, str]:
     with _open_checked(path, max_file_bytes=max_file_bytes) as binary:
         stream = io.TextIOWrapper(binary, encoding="utf-8")
         try:
-            value = json.load(stream)
+            value = json.load(stream, object_pairs_hook=_reject_duplicate_object_keys)
         finally:
             stream.detach()
         return value, _hash_stream(binary)
@@ -142,7 +152,9 @@ def _read_jsonl(
                     raise _ResourceLimitExceeded(
                         f"{path.name} exceeds maximum JSONL record count ({max_records})."
                     )
-                value = json.loads(line)
+                value = json.loads(
+                    line, object_pairs_hook=_reject_duplicate_object_keys
+                )
                 if not isinstance(value, dict):
                     raise ValueError(f"{path.name} line {line_no} must be an object")
                 records.append(value)
@@ -449,7 +461,7 @@ def validate_nlp_artifact_package(
     except Exception as exc:
         add("package_parse", "FAIL", str(exc))
         return {"status": "FAIL", "genuine_data_claim": False, "checks": checks,
-                "blockers": ["One or more package files could not be parsed."]}
+                "blockers": [f"One or more package files could not be parsed: {exc}"]}
     add("resource_limits", "PASS", "All configured artifact resource limits were respected.")
     add("package_parse", "PASS", "CSV, JSON, JSONL, and tensor files parsed.")
 

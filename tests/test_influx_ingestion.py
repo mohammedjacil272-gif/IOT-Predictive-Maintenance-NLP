@@ -256,6 +256,21 @@ class TestInfluxIngestion(unittest.TestCase):
         self.assertNotIn("rul", point.fields)
         self.assertEqual(point.timestamp_ns, SYNTHETIC_EPOCH_NS + (29 * SYNTHETIC_CYCLE_INTERVAL_NS))
 
+    def test_sensor_message_to_point_uses_event_timestamp_when_supplied(self) -> None:
+        payload = valid_payload(cycle=30)
+        payload["event_timestamp"] = "2026-01-01T00:00:00Z"
+        point = sensor_message_to_point(validate_sensor_message(payload), point_factory=FakePoint)
+
+        self.assertEqual(point.timestamp_ns, 1767225600 * 1_000_000_000)
+
+    def test_live_timestamp_mode_rejects_cycle_only_messages(self) -> None:
+        with self.assertRaisesRegex(ValueError, "event_timestamp is required"):
+            sensor_message_to_point(
+                validate_sensor_message(valid_payload(cycle=30)),
+                point_factory=FakePoint,
+                allow_synthetic_timestamp=False,
+            )
+
     def test_repeated_unit_cycle_uses_same_point_identity(self) -> None:
         message = validate_sensor_message(valid_payload(cycle=7))
 
@@ -297,6 +312,23 @@ class TestInfluxIngestion(unittest.TestCase):
         self.assertEqual(records[0]["unit_id"], "1")
         self.assertEqual(records[0]["cycle"], 2)
         self.assertEqual(records[0]["sensor_21"], 17.0)
+
+    def test_duplicate_unit_cycle_is_skipped_before_persistence(self) -> None:
+        payload = json.dumps(valid_payload(cycle=3))
+        mqtt_client = FakeMqttClient([payload, payload])
+        influx_client = FakeInfluxClient([])
+
+        stats = start_ingestion(
+            test_config(),
+            mqtt_client_factory=lambda: mqtt_client,
+            influx_client_factory=lambda _config: influx_client,
+            point_factory=FakePoint,
+        )
+
+        self.assertEqual(stats.messages_received, 2)
+        self.assertEqual(stats.messages_written, 1)
+        self.assertEqual(stats.duplicates_skipped, 1)
+        self.assertEqual(len(influx_client.write_api_instance.calls), 1)
 
     def test_invalid_payload_is_counted_and_not_written(self) -> None:
         payload = valid_payload()

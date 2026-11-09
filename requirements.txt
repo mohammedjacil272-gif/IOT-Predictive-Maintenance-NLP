@@ -2,6 +2,7 @@ fastapi>=0.100,<1
 uvicorn[standard]>=0.23,<1
 numpy
 pandas
+openpyxl>=3.1,<4
 scikit-learn
 joblib
 torch

@@ -193,6 +193,30 @@ def test_oversized_jsonl_record_is_reported_as_fail(tmp_path):
     assert "JSONL line size" in report["blockers"][0]
 
 
+def test_duplicate_json_object_keys_are_rejected_in_jsonl(tmp_path):
+    _package(tmp_path, include_hashes=False)
+    (tmp_path / "entities.jsonl").write_text(
+        '{"log_id":"fixture-log-0","log_id":"shadowed","entities":[]}\n',
+        encoding="utf-8",
+    )
+    report = validate_nlp_artifact_package(tmp_path)
+    assert report["status"] == "FAIL"
+    assert _status(report, "package_parse") == "FAIL"
+    assert any("duplicate JSON object key" in blocker for blocker in report["blockers"])
+
+
+def test_duplicate_json_object_keys_are_rejected_in_manifest(tmp_path):
+    _package(tmp_path, include_hashes=False)
+    (tmp_path / "artifact_manifest.json").write_text(
+        '{"dataset_type":"synthetic_fixture","dataset_type":"approved_real"}',
+        encoding="utf-8",
+    )
+    report = validate_nlp_artifact_package(tmp_path)
+    assert report["status"] == "FAIL"
+    assert _status(report, "package_parse") == "FAIL"
+    assert any("duplicate JSON object key" in blocker for blocker in report["blockers"])
+
+
 def test_oversized_tensor_is_reported_as_fail(tmp_path):
     _package(tmp_path)
     torch.save(torch.zeros((1, 768)), tmp_path / "embeddings.pt")

@@ -18,7 +18,7 @@ This repository contains an FD001 sensor preprocessing and LSTM baseline pipelin
 | IoT | MQTT, InfluxDB, and replay code and software/mock tests exist. No live service, device, or hardware validation is established. |
 | Evaluation | No genuine fusion performance result or official FD001 test evaluation is established. Do not use official test labels for training or model selection. |
 
-See the [approval checklist](context/MULTIMODAL_APPROVAL_CHECKLIST.md), [decision register](docs/MULTIMODAL_DECISION_REGISTER.md), [fusion contract](context/MULTIMODAL_FUSION_DATA_CONTRACT.md), [evaluation protocol](docs/MULTIMODAL_EVALUATION_PROTOCOL.md), and [fusion handoff](docs/MULTIMODAL_FUSION_HANDOFF.md) for detailed current gates. Test reports are historical evidence tied to their recorded revision, environment, and command.
+See the [approval checklist](context/MULTIMODAL_APPROVAL_CHECKLIST.md), [decision register](docs/MULTIMODAL_DECISION_REGISTER.md), [fusion contract](context/MULTIMODAL_FUSION_DATA_CONTRACT.md), [evaluation protocol](docs/MULTIMODAL_EVALUATION_PROTOCOL.md), and [next-phase handover](docs/FINAL_HANDOVER_NEXT_10_PHASES.md) for detailed current gates. Test reports are evidence tied to their recorded revision, environment, and command.
 
 ## Integration verification
 
@@ -56,10 +56,14 @@ Sensor + log metadata -> provenance/policy checks -> (unit_id, cycle) fusion
 
 The alignment key and real-world cycle relationship remain provisional until verified by data owners. The fixture can validate parsing, shapes, alignment, provenance behavior, and missing-text paths; it cannot establish real pairing, point-in-time availability, validated severity labels, or model improvement. Genuine records require additional source, artifact, timestamp, mapping, and approval evidence.
 
+The EDP wind-farm dataset is a separately audited candidate. Raw workbooks were
+not obtained in the current environment, so no EDP schema or fusion result is
+claimed. See [the EDP audit](docs/EDP_DATASET_AUDIT.md), [the dataset contract](docs/MULTIMODAL_DATA_CONTRACT.md), and [the final multimodal handover](docs/FINAL_MULTIMODAL_HANDOVER.md).
+
 ## Data and safe boundaries
 
 The tracked FD001 directory in this source snapshot is lowercase `data/`. Historical notes that say `Data/` are not current path instructions. Do not regenerate frozen baseline data, transforms, metrics, or checkpoints during documentation work. Check output paths before running commands that write artifacts.
 
 `requirements.txt` declares the current broad runtime ranges; it is not a fully resolved lockfile. The verified handover environment is documented in `docs/WAHID_DEPENDENCY_SETUP.md`. The text model's immutable revision and asset-checksum lineage remain unresolved for the synthetic fixture.
 
-For recorded test scope and results, see [readiness validation](docs/READINESS_VALIDATION_RESULTS.md). No tests were run to prepare this proposal.
+For recorded test scope and results, see [readiness validation](docs/READINESS_VALIDATION_RESULTS.md) and the [next-phase handover](docs/FINAL_HANDOVER_NEXT_10_PHASES.md).

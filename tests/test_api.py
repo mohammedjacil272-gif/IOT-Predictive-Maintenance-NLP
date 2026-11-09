@@ -11,6 +11,33 @@ def test_health_and_status_are_local_and_secret_free():
     payload = client.get('/api/status').json()
     assert payload['iot']['mqtt'] == 'not_checked'
     assert 'token' not in str(payload).lower()
+    assert payload['sensor']['official_test_evaluation'] == 'not_run'
+    assert payload['sensor']['validation_metrics']['split'] == 'validation'
+    assert payload['sensor']['official_test_evaluation_detail']['status'] == 'not_run'
+    assert payload['iot']['local_replay'] == 'available'
+    assert payload['iot']['configuration']['mqtt_configured'] is False
+    assert 'token' not in str(payload['iot']).lower()
+
+
+def test_official_test_evaluation_cannot_be_inferred_from_validation_metrics(monkeypatch, tmp_path):
+    from app import main
+
+    monkeypatch.setattr(main, 'OFFICIAL_TEST_METRICS_PATH', tmp_path / 'missing-test-metrics.json')
+    monkeypatch.setattr(main, 'VALIDATION_METRICS_PATH', main.ROOT / 'artifacts/metrics/fd001_lstm_baseline/validation_metrics.json')
+
+    result = main.official_test_evaluation()
+
+    assert result['status'] == 'not_run'
+    assert result['split'] == 'official_test'
+    assert 'validation metrics are not official-test metrics' in result['reason']
+
+
+def test_attachment_contract_is_explicit_and_shared():
+    body = client.get('/api/attachments/contract').json()
+
+    assert body['max_bytes'] == 10 * 1024 * 1024
+    assert set(body['formats']) >= {'.txt', '.csv', '.json', '.pdf'}
+    assert body['analysis'] == 'not_performed'
 
 
 def test_log_analysis_returns_structured_rule_results():
@@ -75,7 +102,7 @@ def test_sensor_prediction_semantics_distinguish_separate_official_evaluation():
         assert response.status_code == 200
         semantics = response.json()['prediction_semantics']
         assert 'validation-trained baseline' in semantics
-        assert 'completed separately' in semantics
+        assert 'official-test evaluation status is reported separately' in semantics
         assert 'not an official test result' in semantics
     finally:
         main.MODEL_PATH, main.SCALER_PATH = original_model_path, original_scaler_path
@@ -160,5 +187,22 @@ def test_machine_session_and_confirmation_lifecycle(monkeypatch, tmp_path):
         assert main.ASSISTANT_STORAGE.list_observations(session_id=sid)[0]['status'] == 'confirmed'
         again = client.post(f'/api/assistant/confirmations/{confirmation}/confirm', json={'action': 'confirm'})
         assert again.status_code == 200
+    finally:
+        main.ASSISTANT_STORAGE = original
+
+
+def test_machine_patch_rejects_identity_change_and_updates_allowed_fields(tmp_path):
+    from app import main
+    original = main.ASSISTANT_STORAGE
+    main.ASSISTANT_STORAGE = main.AssistantStorage(tmp_path / 'assistant.sqlite3')
+    try:
+        created = client.post('/api/machines', json={'machine_id': 'm-patch', 'display_name': 'Before'})
+        assert created.status_code == 201
+        changed = client.patch('/api/machines/m-patch', json={'display_name': 'After', 'location': 'Bay 1'})
+        assert changed.status_code == 200
+        assert changed.json()['display_name'] == 'After'
+        assert changed.json()['location'] == 'Bay 1'
+        identity_attempt = client.patch('/api/machines/m-patch', json={'machine_id': 'other'})
+        assert identity_attempt.status_code == 422
     finally:
         main.ASSISTANT_STORAGE = original

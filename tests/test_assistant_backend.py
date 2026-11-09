@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from assistant.attachments import store_attachment
+from assistant.attachments import attachment_contract, store_attachment
 from assistant.confirmation import confirmation_payload, missing_information
 from assistant.health import machine_health
 from assistant.intents import classify_intent
@@ -39,6 +39,33 @@ def test_voice_and_attachment_boundaries(tmp_path):
     assert len(meta["sha256"]) == 64
     with pytest.raises(ValueError): store_attachment(b"x", "x.exe", "application/octet-stream", tmp_path, session_id="s1")
     with pytest.raises(ValueError): store_attachment(b"not-pdf", "x.pdf", "application/pdf", tmp_path, session_id="s1")
+
+
+@pytest.mark.parametrize(
+    "filename,mime_type,data",
+    [
+        ("note.txt", "text/plain", b"bearing vibration"),
+        ("rows.csv", "text/csv", b"unit_id,cycle\n1,30\n"),
+        ("record.json", "application/json", b'{"unit_id": 1}'),
+    ],
+)
+def test_text_attachment_contract_accepts_supported_formats(tmp_path, filename, mime_type, data):
+    metadata = store_attachment(data, filename, mime_type, tmp_path, session_id="s1")
+    assert metadata["validation_status"] == "stored_unanalyzed"
+    assert (tmp_path / metadata["file_id"]).read_bytes() == data
+
+
+def test_attachment_contract_rejects_mime_mismatch_empty_malformed_and_traversal_extension(tmp_path):
+    assert ".json" in attachment_contract()["formats"]
+    with pytest.raises(ValueError, match="invalid"):
+        store_attachment(b'{"ok": true}', "record.txt", "application/json", tmp_path, session_id="s1")
+    with pytest.raises(ValueError, match="invalid"):
+        store_attachment(b"not json", "record.json", "application/json", tmp_path, session_id="s1")
+    with pytest.raises(ValueError, match="empty"):
+        store_attachment(b"", "empty.txt", "text/plain", tmp_path, session_id="s1")
+    metadata = store_attachment(b"safe", "..\\..\\safe.txt", "text/plain", tmp_path, session_id="s1")
+    assert metadata["original_filename"] == "safe.txt"
+    assert (tmp_path / metadata["file_id"]).resolve().parent == tmp_path.resolve()
 
 
 def test_health_does_not_convert_rul_to_percentage():
