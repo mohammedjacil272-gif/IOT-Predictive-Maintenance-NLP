@@ -54,3 +54,12 @@ def test_concurrent_message_writes_are_serialized(tmp_path):
     for t in threads: t.join()
     assert errors == []
     assert len(AssistantStorage(path).list_messages("s1")) == 8
+
+
+def test_storage_backup_is_recoverable_and_non_destructive(tmp_path):
+    store = AssistantStorage(tmp_path / "assistant.sqlite3")
+    store.save_machine("backup-machine", {"machine_id": "backup-machine", "display_name": "Backup"})
+    backup = store.backup(tmp_path / "backups" / "assistant.sqlite3")
+    restored = AssistantStorage(backup)
+    assert restored.get_machine("backup-machine")["display_name"] == "Backup"
+    assert store.get_machine("backup-machine")["display_name"] == "Backup"

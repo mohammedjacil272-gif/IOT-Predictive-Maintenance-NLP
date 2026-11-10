@@ -122,6 +122,14 @@ pub fn run() {
                     data_root.to_string_lossy().to_string(),
                 )
                 .env("IOT_API_TOKEN", &token)
+                // The packaged sidecar does not inherit a project .env file.
+                // Keep the local assistant explicitly configured for the
+                // already-installed Ollama model without downloading weights.
+                .env("IOT_ASSISTANT_MODEL_PROVIDER", "ollama")
+                .env("IOT_ASSISTANT_MODEL", "qwen2.5:3b")
+                .env("IOT_ASSISTANT_MODEL_BASE_URL", "http://127.0.0.1:11434")
+                .env("IOT_ASSISTANT_MODEL_TIMEOUT", "60")
+                .env("IOT_ASSISTANT_MODEL_RETRIES", "1")
                 // The shell plugin implements this as a Windows Job Object. It
                 // starts the process suspended, assigns it before resuming, and
                 // configures kill-on-job-close, so a crash/forced parent exit

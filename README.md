@@ -1,8 +1,14 @@
 # IoT Predictive Maintenance: Current Status
 
+## Portable MaintainIQ demonstration
+
+The Windows-first desktop demo provides a focused workflow: select a registered machine, run the machine-specific analyst, inspect an independent FD001 LSTM RUL result and rule-based technician findings, and optionally receive an evidence-grounded explanation from local Qwen through Ollama. Start with [the portable demo setup guide](docs/DEMO_SETUP_GUIDE.md) and [the evaluator script](docs/DEMO_SCRIPT.md).
+
+The reproducible demo uses existing FD001 benchmark rows under an explicitly synthetic machine identity. It is not live industrial telemetry and does not claim trained multimodal fusion. The LSTM owns the numerical RUL; NLP owns technician-log extraction; Qwen explains only the supplied structured evidence.
+
 The project now includes a tested local technician-assistant backend foundation: explicit sensor/NLP/fusion modes, local history, assistant analysis and confirmation contracts, typed transcription fallback, machine-health evidence separation, attachment validation, and transactional SQLite storage. Genuine multimodal fusion remains gated and unavailable.
 
-A Windows-first React/Tauri desktop scaffold is also present under `frontend/` and `src-tauri/`. It is not yet a built native application or installer because the current environment lacks Rust/Cargo and PyInstaller.
+A Windows-first React/Tauri desktop application is present under `frontend/` and `src-tauri/`. A native Windows executable and NSIS installer were built on 2026-11-10; clean-machine installation and visual native-UI inspection remain unverified.
 
 This repository contains an FD001 sensor preprocessing and LSTM baseline pipeline, technician-log NLP and embedding artifact generation, metadata-based multimodal fusion components, and IoT ingestion/replay code. Software tests exercise selected interfaces; they do not establish real sensor/log pairing, live-service operation, or predictive improvement.
 

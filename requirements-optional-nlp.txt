@@ -1,0 +1,3 @@
+# Optional local-only transformer stack. Model weights are cached outside the
+# repository and are never downloaded by MaintainIQ at runtime.
+transformers==4.57.1

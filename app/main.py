@@ -10,11 +10,13 @@ import base64
 import math
 import os
 import sys
+import hashlib
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +37,7 @@ from assistant.gateway import ModelGatewayConfig, ModelGatewayError, OllamaGatew
 from assistant.grounding import evidence_summary, grounded_system_prompt
 from assistant.tools import MaintenanceToolError, ReadOnlyMaintenanceTools, tool_evidence_text
 from assistant.retrieval import LocalKnowledgeIndex, RetrievalError
+from app.machine_analysis import analyze_machine
 
 DATA_ROOT = Path(os.environ.get("IOT_INTEGRATED_ROOT", Path(__file__).resolve().parents[1])).resolve()
 # Bundled resources are read-only. In a PyInstaller one-file build, _MEIPASS
@@ -47,6 +50,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 MODEL_PATH = RESOURCE_ROOT / "artifacts/models/fd001_lstm_baseline/best_model.pt"
 SCALER_PATH = RESOURCE_ROOT / "artifacts/data/fd001_lstm_baseline/scaler.joblib"
 SENSOR_EMBEDDING_PATH = RESOURCE_ROOT / "artifacts/embeddings/fd001_lstm_baseline/sensor_embeddings.npy"
+MODEL_PROVENANCE = os.environ.get("IOT_MODEL_PROVENANCE", "REGENERATED_CHECKPOINT_NOT_ORIGINAL")
 FUSION_ARTIFACT_ROOT = RESOURCE_ROOT / "artifacts/models/fusion"
 VALIDATION_METRICS_PATH = RESOURCE_ROOT / "artifacts/metrics/fd001_lstm_baseline/validation_metrics.json"
 OFFICIAL_TEST_METRICS_PATH = RESOURCE_ROOT / "artifacts/metrics/fd001_lstm_baseline/test_metrics.json"
@@ -105,10 +109,24 @@ def iot_configuration_status() -> dict[str, Any]:
 app = FastAPI(title="IoT Predictive Maintenance", version="0.1.0")
 API_TOKEN = os.environ.get("IOT_API_TOKEN")
 
+ALLOWED_CORS_ORIGINS = [
+    "http://tauri.localhost",
+    "tauri://localhost",
+    "http://localhost:1420",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 
 @app.middleware("http")
 async def local_api_token(request: Request, call_next):
-    if API_TOKEN and request.url.path.startswith("/api") and request.url.path != "/api/health":
+    if API_TOKEN and request.method != "OPTIONS" and request.url.path.startswith("/api") and request.url.path != "/api/health":
         if request.headers.get("authorization") != f"Bearer {API_TOKEN}":
             return JSONResponse(status_code=401, content={"detail": "local API authorization required"})
     return await call_next(request)
@@ -116,12 +134,14 @@ async def local_api_token(request: Request, call_next):
 
 class SensorRequest(BaseModel):
     records: list[dict[str, Any]] = Field(min_length=1)
+    machine_id: str | None = None
 
 
 class TechnicianLogRequest(BaseModel):
     log_id: str = Field(min_length=1)
     text: str
     unit_id: str | int | None = None
+    machine_id: str | None = None
     event_time: str | None = None
     available_at: str | None = None
     source_provenance: str = "user_submitted"
@@ -135,6 +155,9 @@ class MachineRequest(BaseModel):
     location: str | None = None
     is_synthetic: bool = False
 
+class MachineAnalysisRequest(BaseModel):
+    include_model: bool = True
+
 
 class MachinePatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -143,6 +166,32 @@ class MachinePatchRequest(BaseModel):
     machine_type: str | None = None
     location: str | None = None
     is_synthetic: bool | None = None
+
+class ComponentRequest(BaseModel):
+    component_id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=256)
+    component_type: str | None = None
+    sensor_stream: str | None = None
+    is_synthetic: bool = False
+
+class MaintenanceRequest(BaseModel):
+    event_type: str = Field(pattern="^(corrective|preventive|scheduled)$")
+    status: str = Field(default="open", pattern="^(open|in_progress|completed|cancelled)$")
+    component_id: str | None = None
+    notes: str = Field(default="", max_length=5000)
+    scheduled_at: str | None = None
+    prediction_id: str | None = None
+    is_synthetic: bool = False
+
+class AlertRequest(BaseModel):
+    category: str = Field(min_length=1, max_length=128)
+    severity: str = Field(pattern="^(low|medium|high|critical)$")
+    message: str = Field(min_length=1, max_length=2000)
+    source: str = Field(min_length=1, max_length=128)
+    component_id: str | None = None
+
+class AlertStatusRequest(BaseModel):
+    status: str = Field(pattern="^(open|acknowledged|resolved)$")
 
 
 class SessionRequest(BaseModel):
@@ -236,7 +285,7 @@ def status() -> dict[str, Any]:
 def models() -> dict[str, Any]:
     return {
         "modes": ["sensor_only", "nlp_only", "fusion"],
-        "sensor_only": {"model": "LSTMBaseline", "input_shape": [30, 17], "status": "available" if MODEL_PATH.exists() else "unavailable"},
+        "sensor_only": {"model": "LSTMBaseline", "input_shape": [30, 17], "status": "available" if MODEL_PATH.exists() else "unavailable", "provenance": MODEL_PROVENANCE},
         "nlp_only": {"model": "rule_based_contract", "status": "available"},
         "fusion": {"model": "MultimodalFusionModel", "status": "untrained_or_unvalidated"},
     }
@@ -254,7 +303,7 @@ def fusion_readiness() -> dict[str, Any]:
     conditions = {
         "sensor_checkpoint": {
             "status": "READY" if MODEL_PATH.is_file() and SCALER_PATH.is_file() else "BLOCKED",
-            "detail": "FD001 baseline checkpoint and scaler are present." if MODEL_PATH.is_file() and SCALER_PATH.is_file() else "FD001 checkpoint or scaler is missing.",
+            "detail": "FD001 baseline checkpoint and scaler are present." if MODEL_PATH.is_file() and SCALER_PATH.is_file() else ("Historical FD001 checkpoint best_model.pt is missing; inference is unavailable." if not MODEL_PATH.is_file() else "FD001 scaler is missing; inference is unavailable."),
         },
         "sensor_embeddings": {
             "status": "READY" if SENSOR_EMBEDDING_PATH.is_file() else "BLOCKED",
@@ -295,11 +344,11 @@ def sensor_infer(request: SensorRequest) -> dict[str, Any]:
         from iot.lstm_inference import predict_records
 
         result = predict_records(request.records, scaler_path=SCALER_PATH, model_path=MODEL_PATH)
-        response = {"mode": "sensor_only", "model_id": "fd001_lstm_baseline", "model_status": "ready",
+        response = {"mode": "sensor_only", "model_id": "fd001_lstm_baseline", "model_status": "ready", "model_provenance": MODEL_PROVENANCE,
                 "unit_id": result.unit_id, "window_start_cycle": result.window_start_cycle,
                 "window_end_cycle": result.window_end_cycle, "prediction": result.prediction,
                 "prediction_semantics": "FD001 uncapped RUL cycles from the validation-trained baseline; official-test evaluation status is reported separately and this prediction is not an official test result"}
-        HISTORY.append(mode="sensor_only", model_id="fd001_lstm_baseline", request={"records": request.records},
+        HISTORY.append(mode="sensor_only", model_id="fd001_lstm_baseline", request=request.model_dump(exclude_none=True),
                        response=response, source_provenance="user_submitted", is_synthetic=False)
         return response
     except Exception as exc:  # adapter normalizes user-facing validation errors
@@ -508,6 +557,7 @@ def register_machine(request: MachineRequest) -> dict[str, Any]:
         ASSISTANT_STORAGE.save_machine(machine_id, {"machine_id": machine_id, **payload})
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    ASSISTANT_STORAGE.add_audit(str(uuid4()), "local_user", "machine.created", "machine", machine_id, {"is_synthetic": payload.get("is_synthetic", False)})
     return ASSISTANT_STORAGE.get_machine(machine_id)
 
 
@@ -525,7 +575,97 @@ def update_machine(machine_id: str, request: MachinePatchRequest) -> dict[str, A
     current.update(request.model_dump(exclude_unset=True))
     try: ASSISTANT_STORAGE.update_machine(machine_id, current)
     except (KeyError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    ASSISTANT_STORAGE.add_audit(str(uuid4()), "local_user", "machine.updated", "machine", machine_id, {"fields": list(request.model_dump(exclude_unset=True))})
     return current
+
+@app.get("/api/machines/{machine_id}/components")
+def list_components(machine_id: str) -> dict[str, Any]:
+    if ASSISTANT_STORAGE.get_machine(machine_id) is None: raise HTTPException(status_code=404, detail="Machine not registered")
+    return {"components": ASSISTANT_STORAGE.list_components(machine_id)}
+
+@app.post("/api/machines/{machine_id}/components", status_code=201)
+def register_component(machine_id: str, request: ComponentRequest) -> dict[str, Any]:
+    try:
+        ASSISTANT_STORAGE.save_component(request.component_id, machine_id, request.model_dump(exclude={"component_id"}))
+    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    value = next(x for x in ASSISTANT_STORAGE.list_components(machine_id) if x["component_id"] == request.component_id)
+    ASSISTANT_STORAGE.add_audit(str(uuid4()), "local_user", "component.created", "component", request.component_id, value)
+    return value
+
+@app.get("/api/machines/{machine_id}/maintenance")
+def list_machine_maintenance(machine_id: str, status: str | None = None, limit: int = 100) -> dict[str, Any]:
+    if ASSISTANT_STORAGE.get_machine(machine_id) is None: raise HTTPException(status_code=404, detail="Machine not registered")
+    if not 1 <= limit <= 500: raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return {"events": ASSISTANT_STORAGE.list_maintenance(machine_id, status, limit)}
+
+@app.post("/api/machines/{machine_id}/maintenance", status_code=201)
+def create_maintenance(machine_id: str, request: MaintenanceRequest) -> dict[str, Any]:
+    event_id = str(uuid4()); payload = request.model_dump()
+    component_id = payload.pop("component_id")
+    try: ASSISTANT_STORAGE.save_maintenance(event_id, machine_id, component_id, payload)
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    value = next(x for x in ASSISTANT_STORAGE.list_maintenance(machine_id) if x["event_id"] == event_id)
+    ASSISTANT_STORAGE.add_audit(str(uuid4()), "local_user", "maintenance.created", "maintenance", event_id, {"machine_id": machine_id, "event_type": value["event_type"]})
+    return value
+
+@app.get("/api/alerts")
+def list_alerts(machine_id: str | None = None, status: str | None = None, limit: int = 100) -> dict[str, Any]:
+    if not 1 <= limit <= 500: raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return {"alerts": ASSISTANT_STORAGE.list_alerts(machine_id, status, limit)}
+
+@app.post("/api/machines/{machine_id}/alerts", status_code=201)
+def create_alert(machine_id: str, request: AlertRequest) -> dict[str, Any]:
+    payload = request.model_dump(); fingerprint = hashlib.sha256(f"{machine_id}|{payload['category']}|{payload['source']}|{payload['message']}".encode()).hexdigest()
+    try: value, created = ASSISTANT_STORAGE.save_alert(str(uuid4()), fingerprint, machine_id, {**payload, "status": "open"})
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if created: ASSISTANT_STORAGE.add_audit(str(uuid4()), "system", "alert.created", "alert", value["alert_id"], {"machine_id": machine_id, "severity": value["severity"]})
+    return {**value, "duplicate_suppressed": not created}
+
+@app.patch("/api/alerts/{alert_id}")
+def update_alert(alert_id: str, request: AlertStatusRequest) -> dict[str, Any]:
+    value = ASSISTANT_STORAGE.update_alert_status(alert_id, request.status)
+    if value is None: raise HTTPException(status_code=404, detail="Alert not found")
+    ASSISTANT_STORAGE.add_audit(str(uuid4()), "local_user", f"alert.{request.status}", "alert", alert_id, {"status": request.status})
+    return value
+
+@app.get("/api/audit")
+def list_audit(resource_type: str | None = None, resource_id: str | None = None, limit: int = 100) -> dict[str, Any]:
+    if not 1 <= limit <= 500: raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return {"events": ASSISTANT_STORAGE.list_audit(resource_type, resource_id, limit)}
+
+
+@app.post("/api/machines/{machine_id}/analyze")
+def analyze_machine_route(machine_id: str, request: MachineAnalysisRequest) -> dict[str, Any]:
+    machine = ASSISTANT_STORAGE.get_machine(machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="Machine not registered")
+    try:
+        result = analyze_machine(
+            machine_id,
+            machine=machine,
+            history_records=HISTORY.list(),
+            gateway=MODEL_GATEWAY,
+            model_path=MODEL_PATH,
+            scaler_path=SCALER_PATH,
+            include_model=request.include_model,
+        )
+        ASSISTANT_STORAGE.add_audit(
+            str(uuid4()),
+            "local_user",
+            "machine.analysis",
+            "machine",
+            machine_id,
+            {
+                "analysis_id": result["analysis_id"],
+                "status": result["status"],
+                "sensor_status": result["sensor_evidence"]["status"],
+                "technician_status": result["technician_evidence"]["status"],
+                "assistant_status": result["assistant"]["status"],
+            },
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/assistant/sessions", status_code=201)

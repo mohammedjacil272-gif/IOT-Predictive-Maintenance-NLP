@@ -7,5 +7,10 @@ scikit-learn
 joblib
 torch
 pytest
+# Required by Starlette's current TestClient implementation.
+httpx2
+# Optional live IoT adapters; local replay and mocked adapter tests do not require a running service.
+paho-mqtt
+influxdb-client
 # Optional, local-only transformer embeddings; no download is attempted by the app.
 # transformers

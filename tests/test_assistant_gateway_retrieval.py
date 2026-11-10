@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib import error
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app import main
-from assistant.gateway import ModelGatewayConfig, OllamaGateway, bounded_context
+from assistant.gateway import ModelGatewayConfig, ModelGatewayError, OllamaGateway, bounded_context
 from assistant.retrieval import LocalKnowledgeIndex, RetrievalError
 
 
@@ -31,6 +33,50 @@ def test_ollama_gateway_generates_from_mocked_response():
 
     gateway = OllamaGateway(ModelGatewayConfig(model="local-model", retries=0), opener=lambda *_args, **_kwargs: Response())
     assert gateway.generate([{"role": "user", "content": "hello"}])["text"] == "Local answer"
+
+
+def test_ollama_gateway_reports_missing_model_from_chat_error():
+    class MissingModel:
+        def __call__(self, *_args, **_kwargs):
+            raise error.HTTPError("http://127.0.0.1:11434/api/chat", 404, "not found", {}, None)
+
+    gateway = OllamaGateway(ModelGatewayConfig(model="qwen2.5:3b", retries=0), opener=MissingModel())
+    with pytest.raises(ModelGatewayError, match="model 'qwen2.5:3b' is unavailable"):
+        gateway.generate([{"role": "user", "content": "hello"}])
+
+
+def test_ollama_gateway_distinguishes_connection_refused():
+    def refused(*_args, **_kwargs):
+        raise error.URLError(ConnectionRefusedError("connection refused"))
+
+    gateway = OllamaGateway(ModelGatewayConfig(model="local-model", retries=0), opener=refused)
+    with pytest.raises(ModelGatewayError, match="Cannot connect to local Ollama"):
+        gateway.generate([{"role": "user", "content": "hello"}])
+
+
+def test_ollama_gateway_distinguishes_timeout():
+    def timed_out(*_args, **_kwargs):
+        raise TimeoutError("timed out")
+
+    gateway = OllamaGateway(ModelGatewayConfig(model="local-model", retries=0), opener=timed_out)
+    with pytest.raises(ModelGatewayError, match="timed out after"):
+        gateway.generate([{"role": "user", "content": "hello"}])
+
+
+def test_ollama_gateway_distinguishes_invalid_json():
+    class InvalidResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return b"not-json"
+
+    gateway = OllamaGateway(ModelGatewayConfig(model="local-model", retries=0), opener=lambda *_args, **_kwargs: InvalidResponse())
+    with pytest.raises(ModelGatewayError, match="invalid JSON"):
+        gateway.generate([{"role": "user", "content": "hello"}])
 
 
 def test_ollama_gateway_unconfigured_is_explicit():

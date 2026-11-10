@@ -22,6 +22,17 @@ archive link during this run. No access restriction was bypassed.
 
 ## Required local audit
 
+The publisher metadata for version 1 describes eight Excel files (219 MB),
+10-minute UTC timestamps, SCADA, event logs with free-text remarks, and 28
+short-description failure records. This does not prove that the remarks are
+technician-authored logs or that they pair with FD001 engines.
+
+The repository-level inventory can be reproduced without network access:
+
+```powershell
+python scripts/validate_repository_datasets.py --report reports/dataset_validation/repository_inventory.json
+```
+
 After lawful acquisition, install a compatible Excel engine if needed and run:
 
 ```powershell

@@ -19,12 +19,12 @@ from models.lstm_baseline import LSTMBaseline
 
 
 EXPECTED_SHA256 = {
-    "models/fd001_lstm_baseline/best_model.pt": "388d6e45f6d9692aee1d8cc9d8de021c4fab4eb0ce8287445eb24973cc2db013",
-    "models/fd001_lstm_baseline/last_model.pt": "01bd4e6b114af77ad2eb3e4dc6088389b8522b6b0f1a1b5e7ba704857a3d5615",
+    "models/fd001_lstm_baseline/best_model.pt": "21c059a7f87c151ef3f78db3a8af9e2fdd0441fb0214136fc1ae583ad5971d70",
+    "models/fd001_lstm_baseline/last_model.pt": "76b00ce715d28aeadc8c812abc3f091a61ae0bd2506b529d0ce19d560814bc8f",
     "data/fd001_lstm_baseline/X_train.npy": "aa63e09450e2b1f2c0a008132de7b8c7166b0f07d12bab7623e08edf107acdc9",
     "data/fd001_lstm_baseline/X_val.npy": "b2cc889d6d68de4185e59c53143cdc2be81d429f6f45037439da8126df1a820b",
     "data/fd001_lstm_baseline/X_test.npy": "833fe9c8a4661f5ad17ccdf40955329168175bf5637918897a0b1d2f4a0e0dc8",
-    "embeddings/fd001_lstm_baseline/sensor_embeddings.npy": "b24d359d513679387b429563c10a8b5f4799a0d84d49caa595ad63efaae6ab82",
+    "embeddings/fd001_lstm_baseline/sensor_embeddings.npy": "de60d4ff953a6efa3128e0b213d67d27a688513175318d9cb3ad9ee6ab7899fd",
 }
 
 
@@ -80,7 +80,7 @@ def verify_artifacts(project_root: Path = ROOT) -> dict[str, object]:
         "hashes": hashes,
         "model_input": [int(model_config["sequence_length"]), int(model_config["input_size"])],
         "sample_prediction_finite": True,
-        "official_test_evaluation": "not_run",
+        "official_test_evaluation": "completed_final_evaluation_only",
     }
 
 

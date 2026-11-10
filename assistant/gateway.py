@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import os
+import socket
 import time
 from typing import Any, Callable
 from urllib import error, request
@@ -119,10 +120,42 @@ class OllamaGateway:
                 if not isinstance(decoded, dict):
                     raise ModelGatewayError("Model service returned an invalid JSON object.")
                 return decoded
-            except (TimeoutError, error.URLError, error.HTTPError, json.JSONDecodeError, OSError, ModelGatewayError) as exc:
+            except error.HTTPError as exc:
+                last = self._http_error(path, exc)
+                if attempt < self.config.retries:
+                    time.sleep(min(0.25 * (attempt + 1), 1.0))
+            except (TimeoutError, socket.timeout) as exc:
+                last = ModelGatewayError(
+                    f"Ollama request timed out after {self.config.timeout_seconds:g} seconds."
+                )
+                if attempt < self.config.retries:
+                    time.sleep(min(0.25 * (attempt + 1), 1.0))
+            except error.URLError as exc:
+                if isinstance(exc.reason, (TimeoutError, socket.timeout)) or "timed out" in str(exc.reason).lower():
+                    last = ModelGatewayError(
+                        f"Ollama request timed out after {self.config.timeout_seconds:g} seconds."
+                    )
+                else:
+                    last = ModelGatewayError(
+                        f"Cannot connect to local Ollama at {self.config.base_url}."
+                    )
+                if attempt < self.config.retries:
+                    time.sleep(min(0.25 * (attempt + 1), 1.0))
+            except json.JSONDecodeError as exc:
+                last = ModelGatewayError("Ollama returned invalid JSON.")
+                if attempt < self.config.retries:
+                    time.sleep(min(0.25 * (attempt + 1), 1.0))
+            except (OSError, ModelGatewayError) as exc:
                 last = exc
                 if attempt < self.config.retries:
                     time.sleep(min(0.25 * (attempt + 1), 1.0))
         if isinstance(last, ModelGatewayError):
             raise last
-        raise ModelGatewayError("Local model service is unavailable or timed out.") from last
+        raise ModelGatewayError("Local Ollama request failed.") from last
+
+    def _http_error(self, path: str, exc: error.HTTPError) -> ModelGatewayError:
+        if exc.code == 404 and path == "/api/chat":
+            return ModelGatewayError(f"Ollama model '{self.config.model}' is unavailable.")
+        if exc.code >= 500:
+            return ModelGatewayError(f"Ollama returned HTTP {exc.code} for {path}.")
+        return ModelGatewayError(f"Ollama returned HTTP {exc.code} for {path}.")
