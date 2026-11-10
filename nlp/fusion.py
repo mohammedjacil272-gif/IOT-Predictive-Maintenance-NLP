@@ -35,15 +35,20 @@ def prepare_fusion(
 
     if not bool(torch.isfinite(embeddings).all()):
         raise ValueError("embeddings contain non-finite values")
+    embeddings = embeddings.detach().cpu().float()
 
     # Build a sensor-window lookup and reject ambiguous keys.
     sensor_by_key = {}
-    for window in sensor_windows:
+    for index, window in enumerate(sensor_windows):
+        if not isinstance(window, dict):
+            raise TypeError(f"Sensor window at index {index} must be a dictionary")
         unit_id = window.get("unit_id")
         cycle = window.get("label_cycle")
 
-        if unit_id is None or cycle is None:
+        if unit_id is None or cycle is None or not str(unit_id).strip() or not str(cycle).strip():
             raise ValueError("Sensor windows require unit_id and label_cycle")
+        if not window.get("source_split"):
+            raise ValueError("Sensor windows require source_split")
 
         key = (str(unit_id), str(cycle))
         if key in sensor_by_key:
@@ -59,6 +64,8 @@ def prepare_fusion(
     seen_log_ids = set()
 
     for index, log in enumerate(log_records):
+        if not isinstance(log, dict):
+            raise TypeError(f"Log at index {index} must be a dictionary")
         log_id = log.get("log_id")
         unit_id = log.get("unit_id")
         cycle = log.get("cycle")
@@ -70,7 +77,8 @@ def prepare_fusion(
             raise ValueError(f"Duplicate log_id: {log_id}")
         seen_log_ids.add(str(log_id))
 
-        if unit_id is None or cycle is None:
+        if (unit_id is None or cycle is None or not str(unit_id).strip()
+                or not str(cycle).strip()):
             unalignable_logs.append(log_id)
             continue
 
@@ -81,6 +89,8 @@ def prepare_fusion(
 
         sensor_split = sensor_by_key[key].get("source_split")
         log_split = log.get("source_split")
+        if not log_split:
+            raise ValueError(f"Log {log_id} requires source_split")
         if sensor_split != log_split:
             raise ValueError(
                 f"source_split mismatch for log_id={log_id}: "

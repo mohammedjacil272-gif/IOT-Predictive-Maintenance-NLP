@@ -9,9 +9,13 @@ from typing import Any, Dict
 import re
 import unicodedata
 
+MAX_TEXT_CHARS = 20_000
+
 
 def normalize_text(text: str) -> str:
     """Normalize text without changing the original source value."""
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
     text = unicodedata.normalize("NFKC", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip().lower()
@@ -22,7 +26,9 @@ def preprocess_log(log: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(log, dict):
         raise TypeError("Each log must be a dictionary.")
 
-    if "log_id" not in log or log["log_id"] is None:
+    log_id = log.get("log_id")
+    if (not isinstance(log_id, (str, int)) or isinstance(log_id, bool)
+            or not str(log_id).strip()):
         raise ValueError("Missing required field: log_id")
 
     original = log.get("text")
@@ -32,6 +38,9 @@ def preprocess_log(log: Dict[str, Any]) -> Dict[str, Any]:
         normalized = ""
     elif not original.strip():
         status = "empty_text"
+        normalized = ""
+    elif len(original) > MAX_TEXT_CHARS:
+        status = "text_too_long"
         normalized = ""
     else:
         status = "ok"

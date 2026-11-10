@@ -26,7 +26,10 @@ def read_logs(input_path):
         reader = csv.DictReader(file)
 
         required = {"log_id", "text"}
-        columns = set(reader.fieldnames or [])
+        fieldnames = reader.fieldnames or []
+        if len(fieldnames) != len(set(fieldnames)):
+            raise ValueError("CSV contains duplicate column names.")
+        columns = set(fieldnames)
         missing = required - columns
 
         if missing:
@@ -34,13 +37,17 @@ def read_logs(input_path):
                 f"CSV is missing required columns: {sorted(missing)}"
             )
 
-        logs = list(reader)
+        logs = []
+        for row_number, row in enumerate(reader, start=2):
+            if None in row or any(row.get(field) is None for field in required):
+                raise ValueError(f"Malformed CSV record at row {row_number}.")
+            logs.append(row)
 
     if not logs:
         raise ValueError("Input CSV contains no data rows.")
 
     ids = [row["log_id"] for row in logs]
-    if any(not value for value in ids):
+    if any(not value or not value.strip() for value in ids):
         raise ValueError("Every log must have a non-empty log_id.")
 
     if len(ids) != len(set(ids)):
@@ -58,11 +65,22 @@ def write_csv(path, rows, fieldnames):
 
 
 def build(input_path, data_dir, embedding_dir, batch_size=8):
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
     logs = read_logs(input_path)
     print(f"Loaded {len(logs)} logs from {input_path}")
 
     # 1. Normalize text while preserving the original input fields.
     processed = preprocess_logs(logs)
+    invalid_rows = [
+        index for index, row in enumerate(processed, start=2)
+        if row["text_status"] != "ok"
+    ]
+    if invalid_rows:
+        raise ValueError(
+            "Maintenance text is empty, invalid, or oversized in CSV row(s): "
+            + ", ".join(map(str, invalid_rows))
+        )
 
     # 2. Extract entities using ORIGINAL text for correct offsets.
     entity_rows = []

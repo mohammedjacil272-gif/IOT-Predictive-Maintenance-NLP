@@ -65,7 +65,7 @@ ENTITY_RULES = {
 MEASUREMENT_PATTERN = re.compile(
     r"(?<!\w)\d+(?:\.\d+)?\s*"
     r"(?:°\s*[CF]|psi|bar|kpa|mpa|rpm|mm|cm|m|"
-    r"kg|g|%|pa)\b",
+    r"kg|g|%|pa)(?!\w)",
     re.IGNORECASE,
 )
 

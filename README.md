@@ -230,5 +230,20 @@ Results from separate datasets and experiments must remain distinct. Synthetic f
 
 `feature/rafaz-nlp-pipeline`
 
+## NLP Runtime and Integration
+
+The local application-facing NLP interface is `nlp/service.py`. It returns
+normalized text, rule-based entities, heuristic severity evidence, and either
+a local DistilBERT embedding or an explicit rule-based fallback when the model
+is unavailable. Set `IOT_NLP_CACHE_DIR` for offline model weights; model
+downloads are disabled unless `IOT_NLP_ALLOW_DOWNLOAD=1` is explicitly set.
+
+This repository does not contain FastAPI routes, database models, or frontend
+code, so live API integration has not been verified. Severity is heuristic,
+entity extraction is rule-based, and no genuine paired sensor/log data is
+established. Fusion training and predictive evaluation remain blocked. See
+[`docs/nlp_runtime.md`](docs/nlp_runtime.md) for request/response fields,
+model behavior, fusion compatibility, limitations, and test instructions.
+
 
 

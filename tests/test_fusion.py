@@ -67,6 +67,35 @@ def test_split_mismatch_is_rejected():
         prepare_fusion(sensors, logs, make_embedding(1).unsqueeze(0))
 
 
+def test_missing_identifiers_and_malformed_records_are_rejected():
+    with pytest.raises(ValueError, match="unit_id and label_cycle"):
+        prepare_fusion([{"unit_id": "", "label_cycle": 1, "source_split": "train"}],
+                       [], torch.empty((0, 768)))
+    with pytest.raises(TypeError, match="dictionary"):
+        prepare_fusion([None], [], torch.empty((0, 768)))
+
+
+def test_unalignable_log_and_missing_source_split_are_explicit():
+    sensors = [{"unit_id": 1, "label_cycle": 10, "source_split": "train"}]
+    logs = [{"log_id": "L001", "unit_id": None, "cycle": None,
+             "source_split": "train"}]
+    result = prepare_fusion(sensors, logs, make_embedding(1).unsqueeze(0))
+    assert result["unalignable_log_ids"] == ["L001"]
+    assert result["metadata"][0]["has_log"] is False
+
+    with pytest.raises(ValueError, match="requires source_split"):
+        prepare_fusion(sensors, [{"log_id": "L002", "unit_id": 1, "cycle": 10}],
+                       make_embedding(1).unsqueeze(0))
+
+
+def test_non_finite_embedding_is_rejected():
+    sensor = [{"unit_id": 1, "label_cycle": 10, "source_split": "train"}]
+    log = [{"log_id": "L1", "unit_id": 1, "cycle": 10, "source_split": "train"}]
+    vector = make_embedding(float("nan")).unsqueeze(0)
+    with pytest.raises(ValueError, match="non-finite"):
+        prepare_fusion(sensor, log, vector)
+
+
 def test_duplicate_log_id_is_rejected():
     sensors = [
         {"unit_id": 1, "label_cycle": 10, "source_split": "train"}
