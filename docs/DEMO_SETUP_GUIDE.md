@@ -17,6 +17,8 @@ The demo uses 30 existing rows from `data/test_FD001.txt`, unit 1, cycles 1–30
 
 The current development-machine package is intentionally kept outside normal Git history because the sidecar and installer are each about 375 MB. Obtain the matching installer from the project GitHub Release when published, or copy the existing local installer and verify its hash before use:
 
+Release: https://github.com/mohammedjacil272-gif/IOT-Predictive-Maintenance-NLP/releases/tag/v0.1.0-demo
+
 - Installer: `ForgeAI Industrial Console_0.1.0_x64-setup.exe`
 - Current local SHA-256: `A46410F5D66F4C3B68CA1D397FF2D7CD2B1C623065D28E128691FAC5F74B854F`
 - Bundled sidecar SHA-256: `0AAE94BE888DC7D098B1D4E711BE296716B17F5B661BC5663C9AF650F46FB103`
