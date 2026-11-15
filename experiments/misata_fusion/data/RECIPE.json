@@ -1,0 +1,11 @@
+{
+  "engine": "misata-studio",
+  "pack": "iot_telemetry",
+  "overrides": {
+    "assets": 6,
+    "sample_minutes": 60,
+    "horizon_months": 12
+  },
+  "seed": 20260921,
+  "blueprint_hash": "cf6a79bbf0ae8b43e0e755db6705bf4901444e3a1bb5234cb1ae3f26c9cf713f"
+}

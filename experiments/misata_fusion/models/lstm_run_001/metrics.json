@@ -1,0 +1,47 @@
+{
+  "best_epoch": 6,
+  "best_validation_average_precision": 0.1881471391212294,
+  "validation_threshold_selection": {
+    "threshold": 0.9184601306915283,
+    "f1": 0.24015748031496062,
+    "precision": 0.21942446043165467,
+    "recall": 0.26521739130434785
+  },
+  "validation_metrics_at_selected_threshold": {
+    "average_precision": 0.1881471391212294,
+    "roc_auc": 0.879012096843069,
+    "precision": 0.21942446043165467,
+    "recall": 0.26521739130434785,
+    "f1": 0.24015748031496062,
+    "threshold": 0.9184601306915283,
+    "confusion_matrix_tn_fp_fn_tp": [
+      12510,
+      217,
+      169,
+      61
+    ],
+    "positive_count": 230,
+    "negative_count": 12727,
+    "sample_count": 12957
+  },
+  "test_metrics": {
+    "average_precision": 0.2319433680849344,
+    "roc_auc": 0.9122922879305728,
+    "precision": 0.22784810126582278,
+    "recall": 0.2608695652173913,
+    "f1": 0.24324324324324326,
+    "threshold": 0.9184601306915283,
+    "confusion_matrix_tn_fp_fn_tp": [
+      12589,
+      183,
+      153,
+      54
+    ],
+    "positive_count": 207,
+    "negative_count": 12772,
+    "sample_count": 12979
+  },
+  "test_evaluated_once_after_selection": true,
+  "dataset_type": "synthetic",
+  "industrial_deployment_validated": false
+}
