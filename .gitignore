@@ -16,7 +16,10 @@ build/
 dist/
 frontend/node_modules/
 frontend/dist/
+frontend/.test-build/
+frontend/*.tsbuildinfo
 src-tauri/target/
+src-tauri/binaries/
 
 # Model and generated numeric artifacts. Existing tracked files remain tracked.
 *.pt

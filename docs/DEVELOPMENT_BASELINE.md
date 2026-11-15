@@ -19,12 +19,12 @@ this PATH, so Tauri checks cannot run in this environment.
 
 The frozen FD001 baseline is loaded read-only. Known SHA-256 values:
 
-- `best_model.pt`: `388d6e45f6d9692aee1d8cc9d8de021c4fab4eb0ce8287445eb24973cc2db013`
-- `last_model.pt`: `01bd4e6b114af77ad2eb3e4dc6088389b8522b6b0f1a1b5e7ba704857a3d5615`
+- `best_model.pt`: `21c059a7f87c151ef3f78db3a8af9e2fdd0441fb0214136fc1ae583ad5971d70` (`REGENERATED_CHECKPOINT_NOT_ORIGINAL`)
+- `last_model.pt`: `76b00ce715d28aeadc8c812abc3f091a61ae0bd2506b529d0ce19d560814bc8f` (`REGENERATED_CHECKPOINT_NOT_ORIGINAL`)
 
-The validation artifact reports MAE 20.884394, RMSE 31.364907, and MSE
+The regenerated validation artifact reports MAE 20.749341, RMSE 31.943616, and MSE
 983.757406 on the frozen validation split. Official-test status is `not_run`
-unless an explicit test metrics artifact is supplied.
+unless an explicit test metrics artifact is supplied. The final official-test evaluation reports MAE 20.180132, RMSE 31.178255, and MSE 972.083587; these labels were not used for training or model selection.
 
 ## Revalidation commands
 

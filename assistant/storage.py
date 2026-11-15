@@ -8,7 +8,7 @@ import shutil
 import sqlite3
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 STATES = {"IDLE", "LISTENING", "PROCESSING", "RESPONDING", "ERROR", "CANCELLED"}
 ROLES = {"user", "assistant", "system"}
 OBSERVATION_STATUSES = {"pending", "confirmed", "rejected", "cancelled"}
@@ -36,10 +36,28 @@ class AssistantStorage:
             CREATE TABLE IF NOT EXISTS confirmations (confirmation_id TEXT PRIMARY KEY, observation_id TEXT NOT NULL UNIQUE REFERENCES observations(observation_id) ON DELETE CASCADE, session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE, payload TEXT NOT NULL, updated_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS attachments (file_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE, machine_id TEXT REFERENCES machines(machine_id), payload TEXT NOT NULL, created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS sensor_references (reference_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE, machine_id TEXT NOT NULL REFERENCES machines(machine_id), payload TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS components (component_id TEXT PRIMARY KEY, machine_id TEXT NOT NULL REFERENCES machines(machine_id), payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(machine_id, component_id));
+            CREATE TABLE IF NOT EXISTS maintenance_events (event_id TEXT PRIMARY KEY, machine_id TEXT NOT NULL REFERENCES machines(machine_id), component_id TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS alerts (alert_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, machine_id TEXT NOT NULL REFERENCES machines(machine_id), payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS idx_components_machine ON components(machine_id);
+            CREATE INDEX IF NOT EXISTS idx_maintenance_machine_time ON maintenance_events(machine_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_alerts_machine_status ON alerts(machine_id, json_extract(payload, '$.status'));
+            CREATE TABLE IF NOT EXISTS audit_events (audit_id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS idx_audit_resource_time ON audit_events(resource_type, resource_id, created_at);
             """)
-            c.execute("INSERT OR IGNORE INTO schema_meta VALUES ('schema_version', '2')")
+            c.execute("INSERT OR IGNORE INTO schema_meta VALUES ('schema_version', '3')")
             current = int(c.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()[0])
+            if current < SCHEMA_VERSION:
+                c.execute("UPDATE schema_meta SET value=? WHERE key='schema_version'", (str(SCHEMA_VERSION),))
             if current > SCHEMA_VERSION: raise RuntimeError(f"Unsupported database schema version {current}.")
+
+    def backup(self, destination: str | Path) -> Path:
+        """Create a recoverable SQLite backup without mutating the store."""
+        target = Path(destination)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with self._connect() as source, sqlite3.connect(target) as backup:
+            source.backup(backup)
+        return target
 
     @staticmethod
     def _json(payload: dict[str, Any]) -> str: return json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -63,6 +81,75 @@ class AssistantStorage:
     def list_machines(self) -> list[dict[str, Any]]:
         with self._connect() as c: rows = c.execute("SELECT payload FROM machines ORDER BY machine_id").fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def save_component(self, component_id: str, machine_id: str, payload: dict[str, Any]) -> None:
+        if not component_id.strip() or self.get_machine(machine_id) is None:
+            raise ValueError("component_id must be non-empty and machine must exist")
+        now = utc_now()
+        with self._connect() as c:
+            if c.execute("SELECT 1 FROM components WHERE component_id=?", (component_id,)).fetchone():
+                raise ValueError(f"Component {component_id!r} already exists.")
+            c.execute("INSERT INTO components VALUES (?,?,?,?,?)", (component_id, machine_id, self._json({"component_id": component_id, "machine_id": machine_id, **payload}), now, now))
+
+    def list_components(self, machine_id: str | None = None) -> list[dict[str, Any]]:
+        query, args = "SELECT payload FROM components", []
+        if machine_id: query += " WHERE machine_id=?"; args.append(machine_id)
+        with self._connect() as c: rows = c.execute(query + " ORDER BY component_id", args).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def save_maintenance(self, event_id: str, machine_id: str, component_id: str | None, payload: dict[str, Any]) -> None:
+        if self.get_machine(machine_id) is None: raise ValueError("machine must exist")
+        if component_id and not any(x["component_id"] == component_id and x["machine_id"] == machine_id for x in self.list_components(machine_id)):
+            raise ValueError("component does not belong to machine")
+        now = utc_now()
+        with self._connect() as c:
+            c.execute("INSERT INTO maintenance_events VALUES (?,?,?,?,?,?)", (event_id, machine_id, component_id, self._json({"event_id": event_id, "machine_id": machine_id, "component_id": component_id, **payload}), now, now))
+
+    def list_maintenance(self, machine_id: str | None = None, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        query, args = "SELECT payload FROM maintenance_events", []
+        if machine_id: query += " WHERE machine_id=?"; args.append(machine_id)
+        with self._connect() as c: rows = c.execute(query + " ORDER BY created_at DESC LIMIT ?", (*args, limit)).fetchall()
+        values = [json.loads(r[0]) for r in rows]
+        return [x for x in values if not status or x.get("status") == status]
+
+    def save_alert(self, alert_id: str, fingerprint: str, machine_id: str, payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        if self.get_machine(machine_id) is None: raise ValueError("machine must exist")
+        with self._connect() as c:
+            prior = c.execute("SELECT payload FROM alerts WHERE fingerprint=? AND json_extract(payload, '$.status') IN ('open','acknowledged')", (fingerprint,)).fetchone()
+            if prior: return json.loads(prior[0]), False
+            now = utc_now(); value = {"alert_id": alert_id, "fingerprint": fingerprint, "machine_id": machine_id, **payload}
+            c.execute("INSERT INTO alerts VALUES (?,?,?,?,?,?)", (alert_id, fingerprint, machine_id, self._json(value), now, now))
+            return value, True
+
+    def list_alerts(self, machine_id: str | None = None, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        query, args = "SELECT payload FROM alerts", []
+        if machine_id: query += " WHERE machine_id=?"; args.append(machine_id)
+        with self._connect() as c: rows = c.execute(query + " ORDER BY created_at DESC LIMIT ?", (*args, limit)).fetchall()
+        values = [json.loads(r[0]) for r in rows]
+        return [x for x in values if not status or x.get("status") == status]
+
+    def update_alert_status(self, alert_id: str, status: str) -> dict[str, Any] | None:
+        if status not in {"open", "acknowledged", "resolved"}: raise ValueError("invalid alert status")
+        with self._connect() as c:
+            row = c.execute("SELECT payload FROM alerts WHERE alert_id=?", (alert_id,)).fetchone()
+            if not row: return None
+            value = json.loads(row[0]); value["status"] = status
+            c.execute("UPDATE alerts SET payload=?,updated_at=? WHERE alert_id=?", (self._json(value), utc_now(), alert_id))
+            return value
+
+    def add_audit(self, audit_id: str, actor: str, action: str, resource_type: str, resource_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        value = {"audit_id": audit_id, "actor": actor, "action": action, "resource_type": resource_type, "resource_id": resource_id, "payload": payload, "created_at": utc_now()}
+        with self._connect() as c: c.execute("INSERT INTO audit_events VALUES (?,?,?,?,?,?,?)", (audit_id, actor, action, resource_type, resource_id, self._json(payload), value["created_at"]))
+        return value
+
+    def list_audit(self, resource_type: str | None = None, resource_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        query, args = "SELECT * FROM audit_events", []
+        clauses = []
+        if resource_type: clauses.append("resource_type=?"); args.append(resource_type)
+        if resource_id: clauses.append("resource_id=?"); args.append(resource_id)
+        if clauses: query += " WHERE " + " AND ".join(clauses)
+        with self._connect() as c: rows = c.execute(query + " ORDER BY created_at DESC LIMIT ?", (*args, limit)).fetchall()
+        return [{"audit_id": r["audit_id"], "actor": r["actor"], "action": r["action"], "resource_type": r["resource_type"], "resource_id": r["resource_id"], "payload": json.loads(r["payload"]), "created_at": r["created_at"]} for r in rows]
 
     def save_session(self, session_id: str, machine_id: str | None, state: str, payload: dict[str, Any]) -> None:
         if state not in STATES: raise ValueError(f"Invalid assistant state {state!r}.")

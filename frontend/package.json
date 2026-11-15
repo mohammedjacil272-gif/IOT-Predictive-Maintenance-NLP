@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "tsc --target ES2022 --module ES2022 --moduleResolution Bundler --outDir .test-build --skipLibCheck src/backendStartup.ts && node --test tests/backendStartup.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

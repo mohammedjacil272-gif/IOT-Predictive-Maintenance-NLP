@@ -11,9 +11,9 @@ def test_health_and_status_are_local_and_secret_free():
     payload = client.get('/api/status').json()
     assert payload['iot']['mqtt'] == 'not_checked'
     assert 'token' not in str(payload).lower()
-    assert payload['sensor']['official_test_evaluation'] == 'not_run'
+    assert payload['sensor']['official_test_evaluation'] == 'completed'
     assert payload['sensor']['validation_metrics']['split'] == 'validation'
-    assert payload['sensor']['official_test_evaluation_detail']['status'] == 'not_run'
+    assert payload['sensor']['official_test_evaluation_detail']['status'] == 'completed'
     assert payload['iot']['local_replay'] == 'available'
     assert payload['iot']['configuration']['mqtt_configured'] is False
     assert 'token' not in str(payload['iot']).lower()
@@ -76,13 +76,24 @@ def test_fusion_readiness_reports_evidence_backed_blockers():
     body = client.get('/api/fusion/readiness').json()
     assert body['ready_for_genuine_fusion'] is False
     assert body['conditions']['sensor_checkpoint']['status'] == 'READY'
+    assert 'present' in body['conditions']['sensor_checkpoint']['detail']
     assert body['conditions']['paired_dataset']['status'] == 'BLOCKED'
     assert body['conditions']['machine_identity_mapping']['status'] == 'BLOCKED'
     assert body['conditions']['fusion_checkpoint']['status'] == 'BLOCKED'
 
 
-def test_sensor_prediction_semantics_distinguish_separate_official_evaluation():
+def test_sensor_inference_is_unavailable_when_checkpoint_is_missing(monkeypatch, tmp_path):
     from app import main
+    monkeypatch.setattr(main, 'MODEL_PATH', tmp_path / 'missing.pt')
+    monkeypatch.setattr(main, 'SCALER_PATH', main.ROOT / 'artifacts/data/fd001_lstm_baseline/scaler.joblib')
+    response = client.post('/api/sensor/infer', json={'records': [{'unit_id': 1, 'cycle': c} for c in range(1, 31)]})
+    assert response.status_code == 503
+    assert 'unavailable' in response.json()['detail']
+
+
+def test_sensor_prediction_semantics_when_inference_adapter_returns_prediction(monkeypatch, tmp_path):
+    from app import main
+    from unittest.mock import patch
 
     class FakeResult:
         unit_id = 1
@@ -90,22 +101,17 @@ def test_sensor_prediction_semantics_distinguish_separate_official_evaluation():
         window_end_cycle = 30
         prediction = 42.0
 
-    original_model_path, original_scaler_path = main.MODEL_PATH, main.SCALER_PATH
-    main.MODEL_PATH = main.ROOT / 'artifacts/models/fd001_lstm_baseline/best_model.pt'
-    main.SCALER_PATH = main.ROOT / 'artifacts/data/fd001_lstm_baseline/scaler.joblib'
-    try:
-        from unittest.mock import patch
-
-        records = [{'unit_id': 1, 'cycle': cycle} for cycle in range(1, 31)]
-        with patch('iot.lstm_inference.predict_records', return_value=FakeResult()):
-            response = client.post('/api/sensor/infer', json={'records': records})
-        assert response.status_code == 200
-        semantics = response.json()['prediction_semantics']
-        assert 'validation-trained baseline' in semantics
-        assert 'official-test evaluation status is reported separately' in semantics
-        assert 'not an official test result' in semantics
-    finally:
-        main.MODEL_PATH, main.SCALER_PATH = original_model_path, original_scaler_path
+    checkpoint = tmp_path / 'fixture-checkpoint.pt'
+    checkpoint.touch()
+    monkeypatch.setattr(main, 'MODEL_PATH', checkpoint)
+    monkeypatch.setattr(main, 'SCALER_PATH', main.ROOT / 'artifacts/data/fd001_lstm_baseline/scaler.joblib')
+    with patch('iot.lstm_inference.predict_records', return_value=FakeResult()):
+        response = client.post('/api/sensor/infer', json={'records': [{'unit_id': 1, 'cycle': c} for c in range(1, 31)]})
+    assert response.status_code == 200
+    semantics = response.json()['prediction_semantics']
+    assert 'validation-trained baseline' in semantics
+    assert 'official-test evaluation status is reported separately' in semantics
+    assert 'not an official test result' in semantics
 
 
 def test_sensor_ui_explains_direct_window_submission_and_separate_replay():

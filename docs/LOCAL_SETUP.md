@@ -1,6 +1,6 @@
 # Windows local setup
 
-From `C:\Users\moham\Desktop\IOT_Integrated`:
+From `C:\Users\moham\Desktop\IOT-MaintainIQ-Audit`:
 
 ```powershell
 python -m venv .venv
@@ -9,4 +9,11 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000`. No database or broker is required for the UI, health, status, or technician-log analysis. Configure MQTT/Influx only when those services are intentionally available. Copy `.env.example` to a local environment file outside Git and never put tokens in source, logs, or UI responses.
+Open `http://127.0.0.1:8000`. In a second terminal:
+
+```powershell
+npm --prefix frontend ci
+npm --prefix frontend run dev
+```
+
+No database or broker is required for local registry and technician-log analysis. Sensor prediction remains unavailable until the verified FD001 checkpoint is supplied. To use the already-installed Ollama model, set it before starting the backend: `$env:IOT_ASSISTANT_MODEL = "qwen2.5:3b"`. The backend reads environment configuration at startup. The local MQTT simulation is `python -m iot.mqtt_publisher --dry-run --limit 1`.
