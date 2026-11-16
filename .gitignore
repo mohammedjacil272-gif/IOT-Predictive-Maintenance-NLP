@@ -57,3 +57,5 @@ data/RUL_FD004.txt
 /tests/test_influx_ingestion.py.backup-20261115-143228
 /experiments/misata_fusion/reports/MISATA_DATASET_AUDIT.md.pre_training_update.bak
 /experiments/misata_fusion/save_sensor_baseline.py.before-hash-fix.bak
+
+.venv-compat/

@@ -17,5 +17,5 @@ def test_fd001_handover_hashes_and_sample_inference_are_valid():
     assert result["status"] == "PASS"
     assert result["model_input"] == [30, 17]
     assert result["sample_prediction_finite"] is True
-    assert result["official_test_evaluation"] == "completed_final_evaluation_only"
+    assert result["official_test_evaluation"] == "not_run"
     assert len(result["hashes"]) == 6

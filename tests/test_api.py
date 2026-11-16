@@ -11,9 +11,9 @@ def test_health_and_status_are_local_and_secret_free():
     payload = client.get('/api/status').json()
     assert payload['iot']['mqtt'] == 'not_checked'
     assert 'token' not in str(payload).lower()
-    assert payload['sensor']['official_test_evaluation'] == 'completed'
+    assert payload['sensor']['official_test_evaluation'] == 'not_run'
     assert payload['sensor']['validation_metrics']['split'] == 'validation'
-    assert payload['sensor']['official_test_evaluation_detail']['status'] == 'completed'
+    assert payload['sensor']['official_test_evaluation_detail']['status'] == 'not_run'
     assert payload['iot']['local_replay'] == 'available'
     assert payload['iot']['configuration']['mqtt_configured'] is False
     assert 'token' not in str(payload['iot']).lower()
