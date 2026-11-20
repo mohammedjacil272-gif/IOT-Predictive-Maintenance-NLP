@@ -1,4 +1,6 @@
 __pycache__/
+.pio/
+firmware/esp32/config.h
 *.py[cod]
 .pytest_cache/
 .venv/
