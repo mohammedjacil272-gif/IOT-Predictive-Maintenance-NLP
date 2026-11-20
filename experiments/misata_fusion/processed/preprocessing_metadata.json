@@ -1,0 +1,95 @@
+{
+  "dataset": "synthetic Misata industrial sensor dataset",
+  "source_file": "data/sensor_readings.csv",
+  "source_sha256": "9c7b6551e797a4caf28aae4399f3e1930bba7be0e5040e8f15a19ba5ea84afdd",
+  "features": [
+    "vibration_mm_s",
+    "bearing_temp_c",
+    "motor_current_a",
+    "discharge_pressure_bar",
+    "rotor_speed_rpm"
+  ],
+  "target": "failure_next_24h",
+  "window_hours": 30,
+  "purge_hours_per_asset_per_split": 24,
+  "split_boundaries": {
+    "train": [
+      "2025-09-01 00:00:00",
+      "2026-02-28 23:00:00"
+    ],
+    "validation": [
+      "2026-03-01 00:00:00",
+      "2026-05-31 23:00:00"
+    ],
+    "test": [
+      "2026-06-01 00:00:00",
+      "2026-08-31 23:00:00"
+    ]
+  },
+  "imputation": "median, fitted on training-period rows only",
+  "scaling": "StandardScaler, fitted on training-period rows only",
+  "imputer_statistics": {
+    "vibration_mm_s": 2.38,
+    "bearing_temp_c": 52.1,
+    "motor_current_a": 34.3,
+    "discharge_pressure_bar": 6.19,
+    "rotor_speed_rpm": 1496.0
+  },
+  "scaler_mean": {
+    "vibration_mm_s": 2.8912845303867405,
+    "bearing_temp_c": 51.880904696132596,
+    "motor_current_a": 33.09325890116636,
+    "discharge_pressure_bar": 6.042535681399633,
+    "rotor_speed_rpm": 1490.14629373849
+  },
+  "scaler_scale": {
+    "vibration_mm_s": 1.688371685532658,
+    "bearing_temp_c": 13.828060337442519,
+    "motor_current_a": 11.436174884055585,
+    "discharge_pressure_bar": 0.9410170414582982,
+    "rotor_speed_rpm": 180.20122772394978
+  },
+  "splits": {
+    "train": {
+      "windows": 25410,
+      "positives": 460,
+      "negatives": 24950,
+      "X_shape": [
+        25410,
+        30,
+        5
+      ],
+      "y_shape": [
+        25410
+      ]
+    },
+    "validation": {
+      "windows": 12957,
+      "positives": 230,
+      "negatives": 12727,
+      "X_shape": [
+        12957,
+        30,
+        5
+      ],
+      "y_shape": [
+        12957
+      ]
+    },
+    "test": {
+      "windows": 12979,
+      "positives": 207,
+      "negatives": 12772,
+      "X_shape": [
+        12979,
+        30,
+        5
+      ],
+      "y_shape": [
+        12979
+      ]
+    }
+  },
+  "model_trained": false,
+  "source_dataset_modified": false
+}

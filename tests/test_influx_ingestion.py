@@ -157,7 +157,7 @@ class FakeInfluxClient:
 
 
 
-def test_config(**overrides: object) -> InfluxIngestionConfig:
+def make_test_config(**overrides: object) -> InfluxIngestionConfig:
     values: dict[str, object] = {
         "influx_url": "http://localhost:8086",
         "influx_org": "local-org",
@@ -228,14 +228,14 @@ class TestInfluxIngestion(unittest.TestCase):
 
     def test_direct_config_rejects_non_integer_mqtt_settings(self) -> None:
         with self.assertRaisesRegex(InfluxIngestionError, "port"):
-            start_ingestion(test_config(mqtt_port="1883"))
+            start_ingestion(make_test_config(mqtt_port="1883"))
 
         with self.assertRaisesRegex(InfluxIngestionError, "QoS"):
-            start_ingestion(test_config(mqtt_qos=True))
+            start_ingestion(make_test_config(mqtt_qos=True))
 
     def test_flux_string_escaping_handles_backslashes_and_quotes(self) -> None:
         query = _build_query(
-            test_config(influx_bucket='bucket\\name"x', measurement='measurement\\name"x'),
+            make_test_config(influx_bucket='bucket\\name"x', measurement='measurement\\name"x'),
             unit_id=None,
             limit=1,
         )
@@ -255,6 +255,21 @@ class TestInfluxIngestion(unittest.TestCase):
         self.assertNotIn("timestamp", point.fields)
         self.assertNotIn("rul", point.fields)
         self.assertEqual(point.timestamp_ns, SYNTHETIC_EPOCH_NS + (29 * SYNTHETIC_CYCLE_INTERVAL_NS))
+
+    def test_sensor_message_to_point_uses_event_timestamp_when_supplied(self) -> None:
+        payload = valid_payload(cycle=30)
+        payload["event_timestamp"] = "2026-01-01T00:00:00Z"
+        point = sensor_message_to_point(validate_sensor_message(payload), point_factory=FakePoint)
+
+        self.assertEqual(point.timestamp_ns, 1767225600 * 1_000_000_000)
+
+    def test_live_timestamp_mode_rejects_cycle_only_messages(self) -> None:
+        with self.assertRaisesRegex(ValueError, "event_timestamp is required"):
+            sensor_message_to_point(
+                validate_sensor_message(valid_payload(cycle=30)),
+                point_factory=FakePoint,
+                allow_synthetic_timestamp=False,
+            )
 
     def test_repeated_unit_cycle_uses_same_point_identity(self) -> None:
         message = validate_sensor_message(valid_payload(cycle=7))
@@ -277,7 +292,7 @@ class TestInfluxIngestion(unittest.TestCase):
         store: list[FakePoint] = []
         mqtt_client = FakeMqttClient([json.dumps(valid_payload(cycle=2))])
         influx_client = FakeInfluxClient(store)
-        config = test_config()
+        config = make_test_config()
 
         stats = start_ingestion(
             config,
@@ -298,6 +313,23 @@ class TestInfluxIngestion(unittest.TestCase):
         self.assertEqual(records[0]["cycle"], 2)
         self.assertEqual(records[0]["sensor_21"], 17.0)
 
+    def test_duplicate_unit_cycle_is_skipped_before_persistence(self) -> None:
+        payload = json.dumps(valid_payload(cycle=3))
+        mqtt_client = FakeMqttClient([payload, payload])
+        influx_client = FakeInfluxClient([])
+
+        stats = start_ingestion(
+            make_test_config(),
+            mqtt_client_factory=lambda: mqtt_client,
+            influx_client_factory=lambda _config: influx_client,
+            point_factory=FakePoint,
+        )
+
+        self.assertEqual(stats.messages_received, 2)
+        self.assertEqual(stats.messages_written, 1)
+        self.assertEqual(stats.duplicates_skipped, 1)
+        self.assertEqual(len(influx_client.write_api_instance.calls), 1)
+
     def test_invalid_payload_is_counted_and_not_written(self) -> None:
         payload = valid_payload()
         payload["timestamp"] = 123.0
@@ -306,7 +338,7 @@ class TestInfluxIngestion(unittest.TestCase):
         errors: list[Exception] = []
 
         stats = start_ingestion(
-            test_config(),
+            make_test_config(),
             mqtt_client_factory=lambda: mqtt_client,
             influx_client_factory=lambda _config: influx_client,
             point_factory=FakePoint,
@@ -328,7 +360,7 @@ class TestInfluxIngestion(unittest.TestCase):
             raise RuntimeError("error reporting failed")
 
         stats = start_ingestion(
-            test_config(),
+            make_test_config(),
             mqtt_client_factory=lambda: mqtt_client,
             influx_client_factory=lambda _config: influx_client,
             point_factory=FakePoint,
@@ -344,7 +376,7 @@ class TestInfluxIngestion(unittest.TestCase):
 
         with self.assertRaisesRegex(InfluxIngestionError, "Failed to connect"):
             start_ingestion(
-                test_config(),
+                make_test_config(),
                 mqtt_client_factory=lambda: mqtt_client,
                 influx_client_factory=lambda _config: influx_client,
             )
@@ -359,7 +391,7 @@ class TestInfluxIngestion(unittest.TestCase):
 
         with self.assertRaisesRegex(InfluxIngestionRunError, "failed to persist") as error:
             start_ingestion(
-                test_config(),
+                make_test_config(),
                 mqtt_client_factory=lambda: mqtt_client,
                 influx_client_factory=lambda _config: influx_client,
                 point_factory=FakePoint,
@@ -381,7 +413,7 @@ class TestInfluxIngestion(unittest.TestCase):
 
         with self.assertRaises(InfluxIngestionRunError) as error:
             start_ingestion(
-                test_config(),
+                make_test_config(),
                 mqtt_client_factory=lambda: mqtt_client,
                 influx_client_factory=lambda _config: influx_client,
                 point_factory=FakePoint,
@@ -402,7 +434,7 @@ class TestInfluxIngestion(unittest.TestCase):
 
         with self.assertRaises(InfluxIngestionRunError) as error:
             start_ingestion(
-                test_config(),
+                make_test_config(),
                 mqtt_client_factory=lambda: mqtt_client,
                 influx_client_factory=lambda _config: influx_client,
                 point_factory=FakePoint,
@@ -418,7 +450,7 @@ class TestInfluxIngestion(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "mqtt factory failed"):
             start_ingestion(
-                test_config(),
+                make_test_config(),
                 mqtt_client_factory=lambda: (_ for _ in ()).throw(RuntimeError("mqtt factory failed")),
                 influx_client_factory=lambda _config: influx_client,
             )
@@ -430,7 +462,7 @@ class TestInfluxIngestion(unittest.TestCase):
         influx_client = FakeInfluxClient([])
 
         stats = start_ingestion(
-            test_config(),
+            make_test_config(),
             mqtt_client_factory=lambda: mqtt_client,
             influx_client_factory=lambda _config: influx_client,
         )
@@ -441,7 +473,7 @@ class TestInfluxIngestion(unittest.TestCase):
 
     def test_client_creation_failure_does_not_print_token(self) -> None:
         token = "fake-token-secret"
-        config = test_config(influx_token=token)
+        config = make_test_config(influx_token=token)
 
         fake_module = SimpleNamespace(
             InfluxDBClient=lambda **_kwargs: (_ for _ in ()).throw(
@@ -533,7 +565,7 @@ class TestInfluxIngestion(unittest.TestCase):
         self.assertIn('"_time":"<object object at', stdout.getvalue())
 
     def test_missing_influx_dependency_is_lazy_and_reported(self) -> None:
-        config = test_config()
+        config = make_test_config()
 
         with patch("iot.influx_ingestion.importlib.import_module", side_effect=ImportError("missing")):
             with self.assertRaisesRegex(InfluxIngestionError, "Missing InfluxDB dependency"):

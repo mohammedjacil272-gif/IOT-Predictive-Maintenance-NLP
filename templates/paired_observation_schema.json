@@ -1,0 +1,17 @@
+{
+  "template_status": "EMPTY_INTAKE_SCHEMA_NOT_DATA",
+  "schema_version": "paired_observation_v1",
+  "required_fields": {
+    "canonical_unit_id": "positive integer after approved crosswalk",
+    "sensor_window_reference": "artifact ID plus window start/end cycle or timestamp",
+    "technician_log_id": "source-linked log identifier",
+    "event_timestamp": "RFC3339 timestamp with timezone",
+    "available_at": "RFC3339 timestamp with timezone",
+    "prediction_cutoff": "RFC3339 timestamp or cycle cutoff",
+    "target_definition": "approved target name and version",
+    "split": "entity-disjoint train/validation/test assignment",
+    "source_provenance": "dataset/version/record/artifact lineage",
+    "data_origin": "genuine_approved or synthetic_fixture"
+  },
+  "records": []
+}

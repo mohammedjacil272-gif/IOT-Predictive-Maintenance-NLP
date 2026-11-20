@@ -12,6 +12,16 @@ venv/
 .vscode/
 .idea/
 *.log
+.local_history.json
+.assistant.sqlite3
+build/
+dist/
+frontend/node_modules/
+frontend/dist/
+frontend/.test-build/
+frontend/*.tsbuildinfo
+src-tauri/target/
+src-tauri/binaries/
 
 # Model and generated numeric artifacts. Existing tracked files remain tracked.
 *.pt
@@ -41,3 +51,13 @@ data/RUL_FD002.txt
 data/RUL_FD003.txt
 data/RUL_FD004.txt
 !artifacts/embeddings/fd001_nlp_fixture/embeddings.pt
+# Verified Misata synthetic experiment checkpoint
+!experiments/misata_fusion/models/lstm_run_001/best_model.pt
+
+# Local generated build metadata and recovery backup
+/frontend/tsconfig.tsbuildinfo
+/tests/test_influx_ingestion.py.backup-20261115-143228
+/experiments/misata_fusion/reports/MISATA_DATASET_AUDIT.md.pre_training_update.bak
+/experiments/misata_fusion/save_sensor_baseline.py.before-hash-fix.bak
+
+.venv-compat/

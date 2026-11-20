@@ -53,7 +53,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--package-dir",
         default="artifacts",
-        help="Flat package directory, or a root containing data/ and embeddings/.",
+        help=("Flat package directory, a root containing data/ and embeddings/, "
+              "or the repository artifacts root containing the namespaced FD001 NLP fixture."),
     )
     parser.add_argument(
         "--report",

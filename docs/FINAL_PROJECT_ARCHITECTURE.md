@@ -1,0 +1,3 @@
+# Final project architecture
+
+The backend has four separated evidence paths: FD001 sensor preprocessing/LSTM/inference; technician text normalization/rule NER/heuristic severity; guarded fusion contracts and readiness; and the local assistant foundation. FastAPI exposes dedicated and unified inference, readiness, history, typed transcription, assistant analysis and machine-health endpoints. SQLite stores assistant machines/sessions/messages/observations/attachments; JSON history remains compatible with the dashboard. Optional transformer, speech, TTS and genuine fusion providers fail closed when unavailable.

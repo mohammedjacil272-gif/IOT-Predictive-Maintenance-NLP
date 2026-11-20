@@ -1,0 +1,3 @@
+# Technician assistant backend
+
+The `assistant` package provides session/state contracts (`IDLE`, `LISTENING`, `PROCESSING`, `RESPONDING`, `ERROR`, `CANCELLED`), intent classification, confirmation payloads, missing-information suggestions, transactional SQLite storage, machine registry/health evidence separation, attachment validation, and voice provider boundaries. FastAPI now exposes machine CRUD, session/message lifecycle, analysis-to-pending-confirmation, confirmation decisions, attachment upload/retrieval, typed transcription, and machine health. It does not claim audio capture, transcription, TTS, or generated responses when providers are unavailable.

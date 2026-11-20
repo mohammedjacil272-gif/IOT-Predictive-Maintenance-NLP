@@ -41,11 +41,27 @@ class TestSensorMessage(unittest.TestCase):
         with self.assertRaisesRegex(SensorMessageValidationError, "Unexpected fields"):
             validate_sensor_message(message)
 
-    def test_timestamp_is_rejected_as_unexpected_field(self) -> None:
+    def test_unapproved_timestamp_field_is_rejected(self) -> None:
         message = valid_message()
         message["timestamp"] = 1_704_067_200.0
 
         with self.assertRaisesRegex(SensorMessageValidationError, "Unexpected fields"):
+            validate_sensor_message(message)
+
+    def test_timezone_aware_event_timestamp_is_preserved(self) -> None:
+        message = valid_message()
+        message["event_timestamp"] = "2026-01-01T10:00:00Z"
+
+        result = validate_sensor_message(message)
+
+        self.assertEqual(result.event_timestamp, "2026-01-01T10:00:00+00:00")
+        self.assertEqual(result.to_dict()["event_timestamp"], "2026-01-01T10:00:00+00:00")
+
+    def test_naive_event_timestamp_is_rejected(self) -> None:
+        message = valid_message()
+        message["event_timestamp"] = "2026-01-01T10:00:00"
+
+        with self.assertRaisesRegex(SensorMessageValidationError, "timezone"):
             validate_sensor_message(message)
 
     def test_non_positive_unit_id_is_rejected(self) -> None:

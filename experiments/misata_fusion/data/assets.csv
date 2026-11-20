@@ -1,0 +1,7 @@
+asset_id,site_id,asset_tag,asset_type,manufacturer,model_code,criticality,rated_power_kw,commissioned_at
+1,1,AST-00006,Screw compressor,Ferro-Tech,MX-0006,B,20.1957,2016-12-14
+2,1,AST-00004,Conveyor drive,Helion Machinery,MX-0004,C,21.8856,2017-10-04
+3,1,AST-00005,Centrifugal pump,Castellan Works,MX-0005,B,17.6089,2020-02-27
+4,1,AST-00002,Induction motor,Orsay Mechanical,MX-0002,C,18.9411,2020-04-27
+5,1,AST-00003,Centrifugal pump,Ferro-Tech,MX-0003,B,23.956,2023-04-12
+6,1,AST-00001,Screw compressor,Aventis Industrial,MX-0001,B,21.2105,2023-11-13

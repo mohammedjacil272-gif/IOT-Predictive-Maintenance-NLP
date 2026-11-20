@@ -6,16 +6,18 @@ import argparse
 import json
 import math
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from numbers import Real
-from typing import Any, Iterable, Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Protocol, Sequence
 
 import joblib
 import numpy as np
-import torch
 
-from models.lstm_baseline import LSTMBaseline
+if TYPE_CHECKING:
+    import torch
+    from models.lstm_baseline import LSTMBaseline
 from preprocessing.cmapss_fd001 import SELECTED_FEATURES
 
 
@@ -23,6 +25,8 @@ WINDOW_SIZE = 30
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCALER_PATH = PROJECT_ROOT / "artifacts/data/fd001_lstm_baseline/scaler.joblib"
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "artifacts/models/fd001_lstm_baseline/best_model.pt"
+_MODEL_CACHE: dict[Path, "LSTMBaseline"] = {}
+_MODEL_CACHE_LOCK = threading.Lock()
 
 INFLUX_METADATA_FIELDS = frozenset({"_measurement", "_time", "_start", "_stop", "result", "table"})
 FORBIDDEN_LABEL_FIELDS = frozenset({"rul", "RUL", "failure_label", "failure", "label"})
@@ -107,6 +111,8 @@ def normalize_sensor_records(records: Iterable[Mapping[str, object]]) -> list[di
 def build_model_input(records: Iterable[Mapping[str, object]], scaler: Scaler) -> tuple[torch.Tensor, int, int, int]:
     """Build one scaled chronological ``(1, 30, 17)`` input tensor."""
 
+    import torch
+
     normalized = normalize_sensor_records(records)
     if len(normalized) < WINDOW_SIZE:
         raise LSTMInferenceError(
@@ -134,23 +140,34 @@ def build_model_input(records: Iterable[Mapping[str, object]], scaler: Scaler) -
     return tensor, int(window[0]["unit_id"]), int(window[0]["cycle"]), int(window[-1]["cycle"])
 
 
-def load_frozen_model(model_path: Path = DEFAULT_MODEL_PATH) -> LSTMBaseline:
+def load_frozen_model(model_path: Path = DEFAULT_MODEL_PATH) -> "LSTMBaseline":
     """Load and validate the existing frozen baseline checkpoint."""
 
-    checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
-    config = checkpoint.get("model_config", {})
-    if config.get("input_size") != len(SELECTED_FEATURES) or config.get("sequence_length") != WINDOW_SIZE:
-        raise LSTMInferenceError("Checkpoint configuration does not match the frozen 30-by-17 baseline.")
-    model = LSTMBaseline(
-        input_size=int(config["input_size"]),
-        hidden_size=int(config["hidden_size"]),
-        num_layers=int(config["num_layers"]),
-        lstm_dropout=float(config["lstm_dropout"]),
-        head_dropout=float(config["head_dropout"]),
-    )
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
-    return model
+    import torch
+    from models.lstm_baseline import LSTMBaseline
+
+    cache_key = Path(model_path).resolve()
+    with _MODEL_CACHE_LOCK:
+        cached = _MODEL_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        if not cache_key.is_file():
+            raise LSTMInferenceError(f"Model checkpoint is unavailable: {model_path}")
+        checkpoint = torch.load(cache_key, map_location="cpu", weights_only=False)
+        config = checkpoint.get("model_config", {})
+        if config.get("input_size") != len(SELECTED_FEATURES) or config.get("sequence_length") != WINDOW_SIZE:
+            raise LSTMInferenceError("Checkpoint configuration does not match the frozen 30-by-17 baseline.")
+        model = LSTMBaseline(
+            input_size=int(config["input_size"]),
+            hidden_size=int(config["hidden_size"]),
+            num_layers=int(config["num_layers"]),
+            lstm_dropout=float(config["lstm_dropout"]),
+            head_dropout=float(config["head_dropout"]),
+        )
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.eval()
+        _MODEL_CACHE[cache_key] = model
+        return model
 
 
 def predict_records(
@@ -162,6 +179,8 @@ def predict_records(
     model: Model | None = None,
 ) -> InferenceResult:
     """Scale records with the frozen scaler and predict RUL with the frozen model."""
+
+    import torch
 
     fitted_scaler = scaler if scaler is not None else joblib.load(scaler_path)
     input_tensor, unit_id, start_cycle, end_cycle = build_model_input(records, fitted_scaler)

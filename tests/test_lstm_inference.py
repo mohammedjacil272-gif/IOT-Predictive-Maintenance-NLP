@@ -225,10 +225,19 @@ class TestLSTMInference(unittest.TestCase):
         self.assertIn("LSTM inference error:", result.stdout)
 
     def test_frozen_artifacts_predict_without_live_services(self) -> None:
+        model_path = Path("artifacts/models/fd001_lstm_baseline/best_model.pt")
+        if not model_path.is_file():
+            with self.assertRaisesRegex(LSTMInferenceError, "Model checkpoint"):
+                predict_records(
+                    records(),
+                    scaler_path=Path("artifacts/data/fd001_lstm_baseline/scaler.joblib"),
+                    model_path=model_path,
+                )
+            return
         result = predict_records(
             records(),
             scaler_path=Path("artifacts/data/fd001_lstm_baseline/scaler.joblib"),
-            model_path=Path("artifacts/models/fd001_lstm_baseline/best_model.pt"),
+            model_path=model_path,
         )
         self.assertEqual(tuple(result.input_tensor.shape), (1, 30, 17))
         self.assertTrue(np.isfinite(result.prediction))

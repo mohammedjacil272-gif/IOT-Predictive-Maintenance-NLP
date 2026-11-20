@@ -1,0 +1,20 @@
+{
+  "model": "two-layer LSTM binary classifier",
+  "input_features": 5,
+  "window_hours": 30,
+  "hidden_size": 64,
+  "num_layers": 2,
+  "dropout": 0.2,
+  "batch_size": 64,
+  "max_epochs": 40,
+  "early_stopping_patience": 7,
+  "learning_rate": 0.001,
+  "weight_decay": 1e-05,
+  "seed": 42,
+  "positive_class_weight": 54.23913043478261,
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "target": "failure_next_24h",
+  "threshold_selection": "maximum validation F1",
+  "test_used_for_training_or_selection": false
+}
